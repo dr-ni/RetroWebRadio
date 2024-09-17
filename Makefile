@@ -1,12 +1,11 @@
 CC = gcc
-CFLAGS = -O0 -g -I /usr/include/SDL -lSDL -lSDL_ttf
-LIBS = `sdl-config --libs`  -lSDL_ttf
-OBJECTS = roehre.o iniparser/iniparser.o
+CFLAGS = -Wall -I /usr/include/SDL -I /usr/include/libxml2 -lxml2 -lSDL -lSDL_ttf
+LIBS = `sdl-config --libs`  -lSDL_ttf -lxml2
 
 all: roehre
 
-roehre: $(OBJECTS)
-	$(CC) $(CFLAGS) -o roehre $(OBJECTS) iniparser/strlib.o iniparser/dictionary.o $(LIBS)
+roehre: roehre.c xmlparse.c
+	$(CC) $(CFLAGS) -o roehre roehre.c xmlparse.c $(LIBS)
 
-$(OBJECTS): $(HEADERS)
-
+clean:
+	rm -f roehre

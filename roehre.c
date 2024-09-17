@@ -1,42 +1,82 @@
+/*
+ * Raspberry pi retro radio
+ * (C) 2023 Amrhein & Niethammer
+ * GNU GENERAL PUBLIC LICENSE Version 3
+ *
+ * most significant changes:
+ * UN 2016 removed parser with memory leaks and included xml parser
+ * UN 2016 potentiometer deamon for raspberry pi 2/3 B+
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ */
+
+// sudo apt-get install libxml2-dev
+// sudo apt-get install libsdl-ttf2.0-dev
+// sudo apt-get install mpd
+// sudo apt-get install mpc
+// add to root's .bashrc
+//    export XAUTHORITY=~pi/.Xauthority
+//    export DISPLAY=:0.0
+
 #include "SDL.h"
+#include "SDL_ttf.h"
+#include "xmlparse.h"
 #include <stdio.h>
-#include "iniparser/iniparser.h"
-#include "SDL_ttf.h" 
 #include <fcntl.h>
 #include <math.h>
-#include <time.h>          
+#include <sys/time.h>
 #include <signal.h>
-       
+#include <unistd.h>
 
-#define SCREEN_WIDTH 650 // width of visible window on screen
-#define SCREEN_HEIGHT 410 // hight of visible window on screen
-#define OFFSET_X 190 // horizontal offset of visible window
-#define OFFSET_Y 310 // vertical offset of visible window
+#define WIN_WIDTH 644 // width of screen
+  // 644/14=46 grid
+#define WIN_HEIGHT 428 // hight of screen
+#define VISIBLE_WIDTH 500// width of visible window on screen
+#define VISIBLE_HEIGHT 428 // hight of visible window on screen
+#define OFFSET_X 80 // horizontal offset of visible window
+#define HIGHLIGHT_XWINDOW 10 // horizontal movable selection window
+#define OFFSET_Y 0 // vertical offset of visible window
 #define SCREEN_DEPTH 24
 
-// License: GPL v3, see LICENSE file
-
+const char FONTFILE[]= {"/home/uwe/radio/VeraMono.ttf"};
+const char STATIONS[]= {"/home/uwe/radio/stations.xml"};
+FILE *fp;
+FILE *dfp;
 SDL_Surface *screen;
-int xpos=4;
+int xpos=0;
 int tty;
 TTF_Font *station_font;
 TTF_Font *station_font_big;
 TTF_Font *track_font;
-char *current_station_url;
+char current_station_url[500];
 int current_station_tune_time=0;
 char current_playing_url[500];
 int loopcounter=0;
 char current_track[300];
 int refreshNow=0;
-int current_band=1;
-int band_count=2;
+int current_page=1;
+int pages=2;
 int volume=3;
-
-char toast[100]; // a "toast" is a short message that appears on the bottom of the screen, like when the volume changes
+int search_l=0;
+int search_r=0;
+int textflow=0;
+int highlight_global_autotune_index=HIGHLIGHT_XWINDOW/2; //half start-value for auto-scann
+char toast[500]; // a "toast" is a short message that appears on the bottom of the screen, like when the volume changes
 int toast_timeout=0;
 
 // get current time in milliseconds
-double time_in_ms() {
+double time_in_ms(){
   struct timeval  tv;
   int time_in_mill;
   gettimeofday(&tv, NULL);
@@ -50,39 +90,87 @@ double time_in_ms() {
  * test the software without a micro controller. You can switch cannels
  * with the cursor keys.
  */
-int process_events () {
+int process_events (){
   SDL_Event event;
-  int status;
   char *key;
   int quit = 0;
-  while(SDL_PollEvent(&event)) {
-    switch (event.type) {		//check the event type
+  while(SDL_PollEvent(&event)){
+    switch(event.type){		    //check the event type
       case SDL_KEYDOWN:			//if a key has been pressed
-	key = SDL_GetKeyName(event.key.keysym.sym);
-    	printf("The %s key was pressed! %i\n", key,event.key.keysym.sym );
-	if ( event.key.keysym.sym == SDLK_ESCAPE )	//quit if 'ESC' pressed
-	  quit = 1;
-    	else if ( key[0] == 'q'  )	//quit if 'q'  pressed
-	  quit = 1;			//same as "if ( event.key.keysym.sym == SDLK_q )"
-        else if(key,event.key.keysym.sym==275) // right
-          xpos+=10;
-        else if(key,event.key.keysym.sym==276) // left
-          xpos-=10;
-        else if(key,event.key.keysym.sym==273) { // up
-          current_band++;
-          if(current_band>band_count)
-            current_band=1;
-        } else if(key,event.key.keysym.sym==274) { // down
-          current_band--;
-          if(current_band<1)
-            current_band=band_count;
+	     key = SDL_GetKeyName(event.key.keysym.sym);
+    	 fprintf(stderr, "The %s key was pressed! %i\n", key,event.key.keysym.sym);
+	     if(event.key.keysym.sym == SDLK_ESCAPE)	//quit if 'ESC' pressed
+	        quit = 1;
+    	 else if(key[0] == 'q')	//quit if 'q'  pressed
+	        quit = 1;			//same as "if(event.key.keysym.sym == SDLK_q)"
+         else if(event.key.keysym.sym==275){ // right
+            if(xpos<=(WIN_WIDTH-OFFSET_X-5)){
+            /*
+            dfp=fopen("/tmp/debug", "w");
+            fprintf(dfp, "x=%d ", xpos);
+            fclose(dfp);
+            */
+            xpos+=5;
+          } else {
+             xpos=-OFFSET_X;
+             current_page++;
+             if(current_page>pages)
+               current_page=1;
+          }
+        }
+        else if(event.key.keysym.sym == SDLK_r){
+           search_r=1;
+           search_l=0;
+        }
+        else if(event.key.keysym.sym == SDLK_l){
+           search_l=1;
+           search_r=0;
+        }
+        else if(event.key.keysym.sym == SDLK_v){
+           system ("/usr/bin/mpc volume +3 &");
+           sprintf(toast,"Volume +3");
+           toast_timeout=time_in_ms()+300;
+           refreshNow=1;
+        }
+        else if(event.key.keysym.sym == SDLK_MINUS){
+           system ("/usr/bin/mpc volume -3 &");
+           sprintf(toast,"Volume -3");
+           toast_timeout=time_in_ms()+300;
+           refreshNow=1;
+        }
+        else if(event.key.keysym.sym==276){ // left
+          if(xpos+OFFSET_X>=5){
+             xpos-=5;
+             /*
+             dfp=fopen("/tmp/debug", "w");
+             fprintf(dfp, "x=%d ", xpos);
+             fclose(dfp);
+             */
+          } else {
+             xpos=WIN_WIDTH-OFFSET_X;
+             current_page--;
+             if(current_page<1){
+               current_page=pages;
+             }
+          }
+        }
+        else if(event.key.keysym.sym==273){ // up
+          current_page++;
+          if(current_page>pages)
+            current_page=1;
+        } else if(event.key.keysym.sym==274){ // down
+          current_page--;
+          if(current_page<1)
+            current_page=pages;
         }
     	break;
        case SDL_MOUSEMOTION:             //mouse moved
-        printf("Mouse motion x:%d, y:%d\n", event.motion.x, event.motion.y );
+//        fprintf(stderr, "Mouse motion x:%d, y:%d\n", event.motion.x, event.motion.y);
+;;
         break;
       case SDL_MOUSEBUTTONUP:           //mouse button pressed
-        printf("Mouse pressed x:%d, y:%d\n", event.button.x, event.button.y );
+;;
+//        fprintf(stderr, "Mouse pressed x:%d, y:%d\n", event.button.x, event.button.y);
         xpos=event.button.x-OFFSET_X;
         break; 
      case SDL_QUIT:			//'x' of Window clicked
@@ -92,153 +180,87 @@ int process_events () {
     }
     refreshNow=1;
   } //while
-  if(quit) {
+  if(quit){
     SDL_Quit();
     exit(1);
   }
   return 1;
 }
 
-/* read data from micro controller */
-int receive_tty() {
-  char line[80];
-  char temps[160]="";
-  int x=0;  
-  int p=0;
-  int c=0;
-  int lastc=0;
-  int tmp;
-  int time=0;
-  // for elect
-  fd_set fds;
-  struct timeval timeout;
-  int rc, result;
-  
-  if(tty==0) {
-    // no micro controller connected. wait a bit, then exit
-    usleep(100000);
-    return 0;
-  }
-
-  rc=1000;
-  while(rc>0) {
-    // wait till there is data
-    timeout.tv_sec = 0;
-    timeout.tv_usec = rc==1000 ? 100000 : 0;;
-    FD_ZERO(&fds);
-    FD_SET(tty, &fds);
-    printf("start tty select...\n");
-    rc = select(tty+1, &fds, NULL, NULL, &timeout);
-    printf("end tty select...%i\n",rc);
-  
-    // start reading
-    c=0;
-    p=0;
-    lastc=0;
-    time=time_in_ms();
-    while(rc>0 && lastc!='\n') {
-      lastc=c;
-      //c=getc(tty);
-      read(tty,&c,1);
-      if(c=='\0') {
-        
-      } else if(c=='\n') {
-        printf("zeilenende gelesen\n");
-      } else {
-        printf("sonstiges zeichen gelesen: %i %i\n",c,p);
-        line[p]=c;
-          p++;
-      }
-      //refreshNow=1;
-      if(p>50)
+void DrawPixel(int x, int y,Uint8 R, Uint8 G,Uint8 B){
+    Uint32 color = SDL_MapRGB(screen->format, R, G, B);
+    if(SDL_MUSTLOCK(screen)){
+        if(SDL_LockSurface(screen) < 0){
+            return;
+        }
+    }
+    switch (screen->format->BytesPerPixel){
+        case 1: { /* vermutlich 8 Bit */
+            Uint8 *bufp;
+            bufp = (Uint8 *)screen->pixels + y*screen->pitch + x;
+            *bufp = color;
+        }
         break;
-      if(time_in_ms()-time>100) {
-        printf("timeout!\n");
-        rc=0;
-        break;
-      }
-    }
-    
-    line[p]=0;
-    if(line[0]=='p' && line[1]=='1') {
-      // first potentiometer (tuner)
-      x=atoi(&line[2]);
-      printf("pot1: %s %d\n",&line[2],x);
-      tmp=SCREEN_WIDTH-x*((float)SCREEN_WIDTH/1024);
-      if(tmp!=xpos) {
-        refreshNow=1;
-        xpos=tmp;
-      }
-    }
-    if(line[0]=='p' && line[1]=='2') {
-      // second potentiometer (volume)
-      tmp=(1024-atoi(&line[2]))/12;
-      printf("pot2: %s %d\n",&line[2],x);
-      if(tmp!=volume) {
-        volume=tmp;
-        sprintf(temps,"amixer -c 1 sset PCM %i",volume);
-        system(temps);
-        sprintf(toast,"Volume %i",volume);
-        toast_timeout=time_in_ms()+300;
-        refreshNow=1;
-      }
-    }
+        case 2: { /* vermutlich 15 Bit oder 16 Bit */
+            Uint16 *bufp;
 
-    if(line[0]=='e' && line[1]=='1') {
-      // first encoder (band)
-      tmp=atoi(&line[2]);
-      if(tmp==2) {
-        current_band++;
-        if(current_band>band_count)
-          current_band=band_count;
-      }
-      if(tmp==1) {
-        current_band--;
-        if(current_band<1)
-          current_band=1;
-      }
-      // stop playing current track
-      if(current_station_url!=NULL)
-        free(current_station_url);
-      current_station_url=NULL;
-      current_track[0]='\0';
-      // show toast
-      sprintf(toast,"%i / %i",current_band,band_count);
-      toast_timeout=time_in_ms()+500;
-      refreshNow=1;
+            bufp = (Uint16 *)screen->pixels + y*screen->pitch/2 + x;
+            *bufp = color;
+        }
+        break;
+        case 3: { /* langsamer 24-Bit-Modus, selten verwendet */
+            Uint8 *bufp;
+
+            bufp = (Uint8 *)screen->pixels + y*screen->pitch + x * 3;
+            if(SDL_BYTEORDER == SDL_LIL_ENDIAN){
+                bufp[0] = color;
+                bufp[1] = color >> 8;
+                bufp[2] = color >> 16;
+            } else {
+                bufp[2] = color;
+                bufp[1] = color >> 8;
+                bufp[0] = color >> 16;
+            }
+        }
+        break;
+        case 4: { /* vermutlich 32 Bit */
+            Uint32 *bufp;
+
+            bufp = (Uint32 *)screen->pixels + y*screen->pitch/4 + x;
+            *bufp = color;
+        }
+        break;
     }
-  }
-  if(p>0)
-    return 1;
-  return 0;
+    if(SDL_MUSTLOCK(screen)){
+        SDL_UnlockSurface(screen);
+    }
 }
 
+
+
 /* draw the green lines on the display */
-int draw_grid() {
+void draw_grid(){
   int x=0;
   int y=0;
-  Uint32       *p;
-  for(x=0; x<SCREEN_WIDTH; x+=50) {
-    for(y=0; y<SCREEN_HEIGHT; y++) {
-      p = (Uint8 *)screen->pixels + (y+OFFSET_Y) * screen->pitch + (x+OFFSET_X) * screen->format->BytesPerPixel;
-      *p=0x004400;
+  // 644/14=46 grid 
+  for(x=0; x<(WIN_WIDTH); x+=46){
+    for(y=0; y<WIN_HEIGHT; y++){
+       DrawPixel(x, y, 0x00, 0x44, 0x00);
     }
   }
 }
 
 /*
- * read stations from .ini file and draw them on the screen. also track
+ * read stations from STATIONS file and draw them on the screen. also track
  * if the red bar is currently over a station
  */
-int draw_stations() {
-  dictionary *stations;
-  char temps[160]="";
-  char *temps2=NULL;
-  char *temps3=NULL;
-  char *name;
+void draw_stations(){
+  char temps_1[500];
+  char temps_2[500];
+  char name[500];
   int i=0;
-  SDL_Color station_color={ 109,207,50 };
-  SDL_Color station_color_highlight={ 255,255,255 };
+  SDL_Color station_color={ 149, 207, 50 };
+  SDL_Color station_color_highlight={ 255, 255, 155 };
   SDL_Surface *text_surface;
   SDL_Rect rect;
   int highlight=0;
@@ -246,91 +268,129 @@ int draw_stations() {
   int w=0;
   int h=0;
   int count=0;
-  
-  stations=iniparser_load("stations.ini");
+  int ret=0;
+
+  memset(temps_1, 0, sizeof(temps_1));
+  memset(temps_2, 0, sizeof(temps_2));
+  memset(name, 0, sizeof(name));
+
+  if(search_r==1){
+     if(!highlight){
+        if(xpos<=(WIN_WIDTH-OFFSET_X-1)){
+           xpos+=1;
+        } else {
+          xpos=-OFFSET_X;
+          current_page++;
+          if(current_page>pages)
+             current_page=1;
+        }
+     }
+  }
+  if(search_l==1){
+     if(!highlight){
+        if(xpos>=1){
+           xpos-=1;
+        } else {
+           xpos=WIN_WIDTH-OFFSET_X;
+          current_page--;
+          if(current_page<1)
+             current_page=pages;
+        }
+     }
+  }
   // number of pages
-  name=iniparser_getstring(stations,"global:pages","1");
-  band_count=atoi(name);
+  memset(name,0,500);
+  ret=parse1(STATIONS, "pages", name);
+  if(ret!=1) exit(-1);
+  pages=atoi(name);
 
   // stations on this page
-  sprintf(temps,"p%i:count",current_band);
-  name=iniparser_getstring(stations,temps,"0");
+  sprintf(temps_1,"p%d",current_page);
+  memset(name,0,500);
+  ret=parse2(STATIONS, temps_1, "count", name);
+  if(ret!=1) exit(-1);
   count=atoi(name);
-  
-  int lines=count/2+1;
-  
-  for(i=1; i<=count; i++) {
-    sprintf(temps,"p%is%i:name",current_band,i);
-    name=iniparser_getstring(stations,temps,"");
+//  int lines=count/2+1; Verteilung der Stationen auf Schrägreihen
+  int lines=count/2+0; //UN
+
+  for(i=1; i<=count; i++){
+    memset(temps_1,0,500);
+    memset(temps_2,0,500);
+    memset(name,0,500);
+    sprintf(temps_1,"p%d", current_page);
+    sprintf(temps_2,"s%d", i);
+    ret=parse3(STATIONS, temps_1, temps_2, "name", name);
+    if(ret!=1) exit(-1);
     TTF_SizeText(station_font, name, &w, &h);
-    rect.x=OFFSET_X+(i-1)*((SCREEN_WIDTH-60)/count)+30;
-    rect.y=OFFSET_Y+((i-1)%lines)*((SCREEN_HEIGHT-120)/(lines>=2 ? lines-1 : 1))+35;
-    highlight=rect.x>xpos-20+OFFSET_X && rect.x<xpos+20+OFFSET_X ? 1 : 0;
-    if(highlight) {
+    rect.x=OFFSET_X+(i-1)*((VISIBLE_WIDTH-60)/count)+30;
+    rect.y=OFFSET_Y+((i-1)%lines)*((VISIBLE_HEIGHT-120)/(lines>=2 ? lines-1 : 1))+35;
+    highlight=rect.x>xpos-HIGHLIGHT_XWINDOW+OFFSET_X && rect.x<xpos+HIGHLIGHT_XWINDOW+OFFSET_X ? 1 : 0;
+    if(highlight){
       highlighted_something=1;
       TTF_SizeText(station_font_big, name, &w, &h);
       rect.y-=1;
     }
     text_surface=TTF_RenderText_Solid(highlight ? station_font_big : station_font, name, highlight ? station_color_highlight : station_color);
-    if (text_surface != NULL) {
+    if(text_surface != NULL){
       rect.x-=w/2;
       SDL_BlitSurface(text_surface, NULL, screen, &rect);
       SDL_FreeSurface(text_surface);
     }
-    free(name);
+    memset(name,0,500);
     // set current station
-    if(highlight) {
-      // try to find link to "PLS" playlist
-      sprintf(temps,"p%is%i:pls",current_band,i);
-      temps3=iniparser_getstring(stations,temps,NULL);
-      if(temps3!=NULL) {
-        // PLS found
-        temps2=malloc(1000);
-        sprintf(temps2,"pls:%s",temps3);
-        free(temps3);
-        printf("PLS found: %s",temps2);
-      }
- 
-      // try to find direct link to file
-      if(temps2==NULL) {
-        sprintf(temps,"p%is%i:url",current_band,i);
-        temps2=iniparser_getstring(stations,temps,"");
-      }
-      if(current_station_url==NULL || strcmp(current_station_url,temps2)!=0) {
-        printf("new tuned station: %s\n",temps2);
-        if(current_station_url!=NULL)
-          free(current_station_url);
-        current_station_url=temps2;
+    if(highlight){
+       if(search_r){
+          highlight_global_autotune_index+=1;
+          if(highlight_global_autotune_index>=2*HIGHLIGHT_XWINDOW-1){
+             search_r=0;
+             highlight_global_autotune_index=0;
+          }
+       }
+       if(search_l){
+          highlight_global_autotune_index+=1;
+          if(highlight_global_autotune_index>=2*HIGHLIGHT_XWINDOW-1){
+             search_l=0;
+             highlight_global_autotune_index=0;
+          }
+       }
+        memset(temps_1,0,500);
+        memset(temps_2,0,500);
+        sprintf(temps_1,"p%d", current_page);
+        sprintf(temps_2,"s%d", i);
+        ret=parse3(STATIONS, temps_1, temps_2, "url", name);
+        if(ret!=1) exit(-1);
+        if(strlen(current_station_url)==0 || strcmp(current_station_url,name)!=0){
+        fprintf(stderr, "new tuned station: %s\n",name);
+        memset(current_station_url,0,500);
+        memcpy(current_station_url,name,strlen(name));
         current_station_tune_time=time_in_ms();
       }
     }
   }
-  if(!highlighted_something) {
+  if(!highlighted_something){
     // no station tuned
-    if(current_station_url!=NULL)
-      free(current_station_url);
-    current_station_url=NULL;  
+    if(strlen(current_station_url)!=0)
+      memset(current_station_url,0,500);
   }
 }
 
 /*
  * draw the tuner (that red bar)
  */
-int draw_tuner() {
+void draw_tuner(){
   int y;
-  Uint32       *p;
-  for(y=0; y<SCREEN_HEIGHT; y++) {
-    p = (Uint8 *)screen->pixels + (y+OFFSET_Y) * screen->pitch + (xpos+OFFSET_X) * screen->format->BytesPerPixel;
-    *p=0xff0000;
-    p = (Uint8 *)screen->pixels + (y+OFFSET_Y) * screen->pitch + (xpos+1+OFFSET_X) * screen->format->BytesPerPixel;
-    *p=0xff0000;
+  for(y=0; y<VISIBLE_HEIGHT; y++){
+    DrawPixel(xpos+OFFSET_X, y+OFFSET_Y, 0xff, 0x77, 0x00);
+    DrawPixel(xpos+OFFSET_X+1, y+OFFSET_Y, 0xff, 0x77, 0x00);
+    DrawPixel(xpos+OFFSET_X+2, y+OFFSET_Y, 0xff, 0x77, 0x00);
+    DrawPixel(xpos+OFFSET_X+3, y+OFFSET_Y, 0xff, 0x77, 0x00);
   }
 }
 
 /*
  * draw the currently playing track (bottom of the screen)
- */
-int draw_current_track() {
+
+void draw_current_track() {
   char temps[500];
   SDL_Surface *text_surface;
   SDL_Rect rect;
@@ -351,13 +411,71 @@ int draw_current_track() {
       strcpy(temps,current_track);
     }
   }
-  
   text_surface=TTF_RenderUTF8_Solid(track_font, temps, station_color);
   if (text_surface != NULL) {
     rect.x=10+OFFSET_X;
-    rect.y=SCREEN_HEIGHT-30+OFFSET_Y;
+    rect.y=VISIBLE_HEIGHT-30+OFFSET_Y;
     SDL_BlitSurface(text_surface, NULL, screen, &rect);
     SDL_FreeSurface(text_surface);
+      fprintf(stderr, ".");
+  }
+}
+ */
+
+
+/*
+ * draw the currently playing track (bottom of the screen)
+ */
+void draw_current_track() {
+  char temps[500];
+  char temps2[500];
+  char temps3[]={"          "};
+  SDL_Surface *text_surface;
+  SDL_Rect rect;
+  SDL_Color station_color={ 255,255,255 };
+  // show a toast instead of current track?
+  if(toast_timeout>time_in_ms()) {
+    strcpy(temps,toast);
+  } else {
+    // show current track
+    if(strlen(current_track)==0)
+      return;
+    if(strlen(current_station_url)==0)
+      return;
+    if(strcmp(current_playing_url,"")==0) {
+      // playing of current station hasn't started yet
+      strcpy(temps,"");
+    } else {
+      strcpy(temps,current_track);
+    }
+  }
+  if(strlen(temps)>=70){
+     memset(temps2,0,500);
+     memcpy(temps2,&temps[textflow],strlen(temps)-textflow);
+     memcpy(&temps2[strlen(temps)-textflow],temps3,10);
+     memcpy(&temps2[strlen(temps)-textflow+10],temps,textflow);
+      //printf("%s\n",temps2);
+     if(textflow>=strlen(temps)) textflow=0;
+     textflow++;
+usleep(40000);
+     text_surface=TTF_RenderUTF8_Solid(track_font, temps2, station_color);
+     if (text_surface != NULL) {
+        rect.x=0;
+        rect.y=VISIBLE_HEIGHT-20+OFFSET_Y;
+        SDL_BlitSurface(text_surface, NULL, screen, &rect);
+        SDL_FreeSurface(text_surface);
+     }
+  }
+  else{
+     textflow=0;
+     //printf("%s\n",temps2);
+     text_surface=TTF_RenderUTF8_Solid(track_font, temps, station_color);
+     if (text_surface != NULL) {
+        rect.x=10;
+        rect.y=VISIBLE_HEIGHT-20+OFFSET_Y;
+        SDL_BlitSurface(text_surface, NULL, screen, &rect);
+        SDL_FreeSurface(text_surface);
+     }
   }
 }
 
@@ -365,13 +483,13 @@ int draw_current_track() {
  * find out which track is currenty playing. If user has recently changed
  * volume or changed band: show information about this event instead
  */
-int get_current_track() {
+void get_current_track(){
   FILE *fp;
   char out[1000];
   char new_track[1000];
 
   new_track[0]='\0';
-  if(strcmp(current_playing_url,"")==0) {
+  if(strcmp(current_playing_url,"")==0){
     // no station playing
     current_track[0]='\0';
     return;
@@ -380,14 +498,14 @@ int get_current_track() {
     return;
   // get new track info
   fp = popen("/usr/bin/mpc", "r");
-  if (fp == NULL) {
+  if(fp == NULL){
     strcpy(new_track,"Error receiving station info");
   } else {
     fgets(out, sizeof(out)-1, fp);
-    printf("current track: %s\n",out);
-    if(strncmp(out,"volume: ",8)==0) {
+   // fprintf(stderr, "current track: %s\n",out);
+    if(strncmp(out,"volume: ",8)==0){
       strcpy(current_track,"");
-    } else if(strncmp(out,"http",4)==0 || strncmp(out,"mms://",6)==0) {
+    } else if(strncmp(out,"http",4)==0 || strncmp(out,"mms://",6)==0){
       strcpy(new_track,"");
     } else {
       strcpy(new_track,out);
@@ -395,13 +513,13 @@ int get_current_track() {
         new_track[strlen(out)-1]='\0';
     }
     // read a second line (there might be an error message)
-    if(fgets(out, sizeof(out)-1, fp)!=NULL) {
+    if(fgets(out, sizeof(out)-1, fp)!=NULL){
       if(strncmp(out,"ERROR",5)==0)
         strcpy(new_track,out);
     }
-    pclose(fp);    
+    pclose(fp);
   }
-  if(strcmp(current_track,new_track)!=0) {
+  if(strcmp(current_track,new_track)!=0){
     refreshNow=1;
     strcpy(current_track,new_track);
   }
@@ -410,49 +528,63 @@ int get_current_track() {
 /*
  * play currently selected track
  */
-int play_current() {
-  int i=0;
-  char temps[360]="";
-  if(strcmp(current_playing_url,"")!=0 && current_station_url==NULL
-      || current_station_url>0 && strcmp(current_station_url, current_playing_url)!=0) {
+void play_current(){
+  char temps[522];
+  memset(temps, 0, sizeof(temps));
+  int ret=0;
+  
+  if((strcmp(current_playing_url,"")!=0 && strlen(current_station_url)==0)
+      || (current_station_url>0 && strcmp(current_station_url, current_playing_url)!=0)){
     // station has changed
-    if(time_in_ms()-current_station_tune_time<1000 && current_station_url!=NULL) {
+    if(time_in_ms()-current_station_tune_time<1000 && strlen(current_station_url)>0){
       // station is not tuned in long enough. wait a bit more.
       return;
     }
-    if(current_station_url==0)
-      strcpy(current_playing_url,"");
-    else
-      strcpy(current_playing_url,current_station_url);
-
-      
-    printf("neue station: %s\n",current_playing_url);
-    if(fork()==0) {
-      system("mpc clear");
-      if(strncmp(current_playing_url,"pls:",4)==0) {
-        // pls playlist
-        sprintf(temps,"./play_pls.sh '%s'",&current_playing_url[4]);
-      } else {
-        sprintf(temps,"mpc add '%s'",current_playing_url);
-      }
-      printf("command: %s\n",temps);
-      system(temps);    
+    if(strlen(current_station_url)==0){
+      memset(current_playing_url, 0, sizeof(current_playing_url));
+    }
+    else{
+      strcpy(current_playing_url, current_station_url);
+    }
+    fprintf(stderr, "\ntuning station: %s\n", current_playing_url);
+    ret=fork();
+    if(ret==0){
+      system("mpc clear &");
+      sprintf(temps,"mpc add '%s' &", current_playing_url);
+      fprintf(stderr, "### command: %s\n",temps);
+      system(temps);
       system("mpc play");
       exit(0);
     }
+    else{
+      fprintf(stderr, "=> Fork with ret=%d, retrying...\n",ret);
+//      sprintf(temps,"kill '%d'\n", ret);
+//      system(temps);
+      ret=fork();
+      if(ret==0){
+        sleep(1);
+//        system("mpc clear &");
+        sprintf(temps,"mpc add '%s' &", current_playing_url);
+        fprintf(stderr, "### command: %s\n",temps);
+        system(temps);
+        system("mpc play");
+        exit(0);
+      }
+      else{
+        fprintf(stderr, "=> Fork id=%d\n",ret);
+      }
+    }
+    toast_timeout=time_in_ms()+500;
+    refreshNow=1;
   }
 }
 
 /*
  * draw everything on the screen
  */
-int draw_everything() {
-  printf("draw_everything\n");
-  if(xpos<0)
-    xpos=0;
-  if(xpos>=SCREEN_WIDTH)
-    xpos=SCREEN_WIDTH-1;
-  SDL_FillRect(screen,NULL, 0x000000); 
+void draw_everything(){
+ // fprintf(stderr, "draw_everything\n");
+  SDL_FillRect(screen,NULL, 0x000000);
   draw_grid();
   draw_stations();
   draw_tuner();
@@ -464,15 +596,15 @@ int draw_everything() {
 /*
  * main loop
  */
-int loop() {
-  int did_something=0;
-  while(1) {
+int loop(){
+ //// system("unclutter -display :0 -noevents -grab &");
+  while(1){
     loopcounter++;
     if(loopcounter%10==1 || tty==0)
       process_events();
-    receive_tty();
+   // receive_tty();
     get_current_track();
-    if(loopcounter%40==0 || refreshNow==1) {
+    if(loopcounter%40==0 || refreshNow==1){
       draw_everything();
     }
     play_current();
@@ -480,40 +612,32 @@ int loop() {
   }
 }
 
-int main(int argc, char *argv[]) {
-     int         x = 10; //x coordinate of our pixel
-     int         y = 20; //y coordinate of our pixel
-     int flags=0;
-     
-     printf("initializing...\n");
+int main(int argc, char *argv[]){
+     memset(toast, 0, sizeof(toast));
+     sleep(2); // avoids boot radio behind taskbar
+     fprintf(stderr, "initializing...\n");
      signal(SIGCHLD, SIG_IGN);
-     
-     
+
      /* Initialize SDL */
      SDL_Init(SDL_INIT_VIDEO);
-     
+
      /* Initialize the screen / window */
-     screen = SDL_SetVideoMode(1024,768, SCREEN_DEPTH, SDL_FULLSCREEN);
-     //screen = SDL_SetVideoMode(1024,768, SCREEN_DEPTH, SDL_SWSURFACE /* SDL_FULLSCREEN*/);
-     if(screen==NULL) {
-       printf("SDL Error: %s\n",SDL_GetError());
+//     screen = SDL_SetVideoMode(WIN_WIDTH,WIN_HEIGHT, SCREEN_DEPTH, SDL_FULLSCREEN);
+     SDL_ShowCursor(1); // Mauszeiger an
+     screen = SDL_SetVideoMode(WIN_WIDTH, WIN_HEIGHT, SCREEN_DEPTH, SDL_SWSURFACE);
+     if(screen==NULL){
+       fprintf(stderr, "SDL Error: %s\n",SDL_GetError());
      }
 
      // load font for text
      TTF_Init();
-     station_font=TTF_OpenFont("VeraMono.ttf", 15);
-     station_font_big=TTF_OpenFont("VeraMono.ttf", 16);
-     if(station_font==0) {
-       printf("ERROR: font defekt\n"); exit(1);
+     station_font=TTF_OpenFont(FONTFILE, 22);
+     station_font_big=TTF_OpenFont(FONTFILE, 22);
+     if(station_font==0){
+       fprintf(stderr, "ERROR: font defekt\n"); exit(1);
      }
-     track_font=TTF_OpenFont("VeraMono.ttf", 12);
-       
-     // open connection to micro controller
-     tty=open("/dev/ttyACM0",O_RDWR | O_NONBLOCK);
-     if(tty==0)
-       tty=open("/dev/ttyACM1", O_RDWR | O_NONBLOCK);
-     
-     printf("started...\n");
-     printf("starting to receive stuff and so on...\n");
+     track_font=TTF_OpenFont(FONTFILE, 15);
+     fprintf(stderr, "started...\n");
+     fprintf(stderr, "starting to receive stuff and so on...\n");
      loop();
 }
