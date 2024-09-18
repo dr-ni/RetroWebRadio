@@ -39,6 +39,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#define STATSPERCOL 10 // maximal stations per column
 #define WIN_WIDTH 644 // width of screen
   // 644/14=46 grid
 #define WIN_HEIGHT 428 // hight of screen
@@ -49,8 +50,8 @@
 #define OFFSET_Y 0 // vertical offset of visible window
 #define SCREEN_DEPTH 24
 
-const char FONTFILE[]= {"/home/uwe/radio/VeraMono.ttf"};
-const char STATIONS[]= {"/home/uwe/radio/stations.xml"};
+const char FONTFILE[]= {"VeraMono.ttf"};
+const char STATIONS[]= {"stations.xml"};
 FILE *fp;
 FILE *dfp;
 SDL_Surface *screen;
@@ -310,8 +311,8 @@ void draw_stations(){
   ret=parse2(STATIONS, temps_1, "count", name);
   if(ret!=1) exit(-1);
   count=atoi(name);
-//  int lines=count/2+1; Verteilung der Stationen auf Schrägreihen
-  int lines=count/2+0; //UN
+//  int stations_per_column=count/2; //Verteilung der Stationen auf Schrägreihen
+  int stations_per_column=STATSPERCOL; //UN
 
   for(i=1; i<=count; i++){
     memset(temps_1,0,500);
@@ -323,7 +324,7 @@ void draw_stations(){
     if(ret!=1) exit(-1);
     TTF_SizeText(station_font, name, &w, &h);
     rect.x=OFFSET_X+(i-1)*((VISIBLE_WIDTH-60)/count)+30;
-    rect.y=OFFSET_Y+((i-1)%lines)*((VISIBLE_HEIGHT-120)/(lines>=2 ? lines-1 : 1))+35;
+    rect.y=OFFSET_Y+((i-1)%stations_per_column)*((VISIBLE_HEIGHT-120)/(stations_per_column>=2 ? stations_per_column-1 : 1))+35;
     highlight=rect.x>xpos-HIGHLIGHT_XWINDOW+OFFSET_X && rect.x<xpos+HIGHLIGHT_XWINDOW+OFFSET_X ? 1 : 0;
     if(highlight){
       highlighted_something=1;

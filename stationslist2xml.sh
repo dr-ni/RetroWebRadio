@@ -1,13 +1,15 @@
 #!/bin/bash
-cat stationslist.txt | sed -r '/(^\s*#)|(^\s*$)/d' > tmpstl
-mv tmpstl stationslist.txt 
+#cat stationslist.txt | sed -r '/(^\s*#)|(^\s*$)/d' > tmpstl
+#mv tmpstl stationslist.txt 
 INFILE=stationslist.txt
 OUTFILE=stations.xml
 
 STATIONS_PER_PAGE=20
 
 NUM_STATIONS=`wc -l $INFILE | cut -d ' ' -f 1`
-NUM_PAGES=`echo "(${NUM_STATIONS})/$STATIONS_PER_PAGE" | bc`
+REMAINDER=`echo "(${NUM_STATIONS})%$STATIONS_PER_PAGE" | bc`
+[[ $REMAINDER ne 0 ]] && CORRECTOR=1
+NUM_PAGES=`echo "(${NUM_STATIONS})/$STATIONS_PER_PAGE+$CORRECTOR" | bc`
 
 #echo "Got ${NUM_STATIONS} stations, ${NUM_PAGES} Pages"
 
