@@ -1,4 +1,4 @@
-[ReggaeTrade] http://185.33.21.111:80/reggae_128
+[ReggaeTrade] http://sc1c-sjc.1.fm:7078
 [RadioSRF3] http://stream.srg-ssr.ch/m/drs3/aacp_96
 [Deutschlandfunk] https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3
 [antenneBayern] http://stream.antenne.de:80/antenne
@@ -77,4 +77,4 @@
 [Ambiesphere] http://uk5.internet-radio.com:8347/stream
 [RussianNashe] http://nashe.streamr.ru:80/nashe-128.mp3
 [ABC-Classic] http://live-radio01.mediahubaustralia.com/2FMW/mp3/
-[HobartLocal] http://live-radio01.mediahubaustralia.com/7LRW/mp3/
+
