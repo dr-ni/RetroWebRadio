@@ -24,7 +24,7 @@ make
 
 ## Usage
 ```
-./stationslist2xml.sh
+./stationslist2xml.sh > stations.xml
 ./roehre
 ```
 
