@@ -1,4 +1,4 @@
-[ReggaeTrade] http://sc1c-sjc.1.fm:7078
+[ReggaeTrade] https://strm112.1.fm/reggae_mobile_mp3
 [RadioSRF3] http://stream.srg-ssr.ch/m/drs3/aacp_96
 [Deutschlandfunk] https://st01.sslstream.dlf.de/dlf/01/128/mp3/stream.mp3
 [antenneBayern] http://stream.antenne.de:80/antenne
