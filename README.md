@@ -1,5 +1,6 @@
 # RetroWebRadio
 A nice SDL Webradio GUI
+![onb](https://github.com/dr-ni/RetroWebRadio/blob/main/Niethammer-Audio.png)
 
 ![onb](https://github.com/dr-ni/RetroWebRadio/blob/main/screen.png)
 
