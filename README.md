@@ -1,6 +1,6 @@
 <img src="https://github.com/dr-ni/RetroWebRadio/blob/main/Niethammer-Audio.png" width=25% height=25%></br>
 # RetroWebRadio
-A nice SDL Webradio GUI
+## A nice SDL Webradio GUI
 [![onb](https://github.com/dr-ni/RetroWebRadio/blob/main/screen.png)](https://www.youtube.com/watch?v=MMwdwqVnOOw)
 ## Description
 This is a simple mpd webradio SDL frontend which was initially launched by Florian Arnhein (http://amrhein.eu/nw/roehre/ui/).
