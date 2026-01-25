@@ -1,0 +1,16 @@
+echo "
+<br><br>
+Python3 libraries:
+<br>
+<table class=\"table table-bordered table-hover table-condensed\">
+<thead><tr><th title=\"Field #1\">Name</th>
+<th title=\"Field #2\">Version</th>
+<th title=\"Field #3\">Licenses</th>
+</tr></thead>
+<tbody><tr>
+"
+pip3 list --format=columns | awk '{print $1}' | sed '1,2d' | xargs pip3 show | egrep -e 'Name|License|Version' | tr '\n' ' ' | sed --expression='s/Name:/<\/tr>\n<tr>\n<td>\n/g' | sed --expression='s/Version:/\n<\/td>\n<td>\n/g' | sed --expression='s/License:/\n<\/td>\n<td>\n/g'
+echo "
+</table>
+</html>
+"

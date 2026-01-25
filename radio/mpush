@@ -1,0 +1,8 @@
+#!/bin/bash
+mpc stop
+EO=$(mpc outputs | grep enabled | awk -F "Output " '{ print $2 }' | awk -F " " '{ print $1 }' | tail -n 1)
+echo "output was $EO"
+[[ "$EO" == "1" ]] && mpc enable only 2 || mpc enable only 1
+echo "mpush done"
+mpc play
+sleep 1

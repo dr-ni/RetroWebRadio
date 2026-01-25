@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<global>
+<pages>2</pages>
+  <p1>
+    <count>8</count>
+    <s1>
+      <name>SWR1</name>
+      <url>https://liveradio.swr.de/sw282p3/swr1bw/</url>
+    </s1>
+    <s2>
+      <name>SWR3</name>
+      <url>https://liveradio.swr.de/sw282p3/swr3/</url>
+    </s2>
+    <s3>
+      <name>Reggae</name>
+      <url>http://185.33.21.111:80/reggae_128</url>
+    </s3>
+    <s4>
+      <name>AntenneBayern</name>
+      <url>http://stream.antenne.de:80/antenne</url>
+    </s4>
+    <s5>
+      <name>Dismuke</name>
+      <url>http://stream-s2.early1900s.org:8000/</url>
+    </s5>
+    <s6>
+      <name>anna fm</name>
+      <url>http://listen.radionomy.com/Radio-Mozart</url>
+    </s6>
+    <s7>
+      <name>NDR Kultur</name>
+      <url>http://78.129.202.200:8040</url>
+    </s7>
+    <s8>
+      <name>jazz</name>
+      <url>none</url>
+    </s8>
+  </p1>
+  <p2>
+    <count>4</count>
+    <s1>
+      <name>teddy</name>
+      <url>http://51.222.8.101:8000/stream</url>
+    </s1>
+    <s2>
+      <name>hirschmilch</name>
+      <url>http://144.76.106.52:7000/chillout.aac</url>
+    </s2>
+    <s3>
+      <name>chillout</name>
+      <url>http://stream.antenne.de:80/chillout</url>
+    </s3>
+    <s4>
+      <name>ambient</name>
+      <url>http://144.76.106.52:7000/chillout.aac</url>
+    </s4>
+  </p2>
+</global>

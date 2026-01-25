@@ -1,0 +1,2 @@
+tuptime
+tuptime -t

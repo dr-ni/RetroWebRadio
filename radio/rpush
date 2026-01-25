@@ -1,0 +1,5 @@
+#!/bin/bash
+export DISPLAY=:0
+pgrep roehre && killall roehre || /home/radio/radio/roehre>/dev/null 2>&1 &
+sleep 1
+echo "rpush done"

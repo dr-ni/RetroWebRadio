@@ -1,0 +1,80 @@
+https://www.youtube.com/watch?v=kdugp7DrODY
+--------------------------------------------------------------------------------------------------------------------------------
+
+It is also known as Silent Booting Process of Raspberry Pi.
+
+Following are the steps, you need to follows.
+
+STEP : 1 (Remove Rainbow Screen)
+--------------------------------------------------------
+Open “/boot/config.txt” as root.
+
+$ sudo nano /boot/config.txt
+
+Then add below line at the end of the file.
+
+disable_splash=1
+
+--------------------------------------------------------
+STEP : 2 (Remove text message under splash image)
+------------------------------------------------------------------------------------
+Open “/usr/share/plymouth/themes/pix/pix.script” as root.
+
+$ sudo nano /usr/share/plymouth/themes/pix/pix.script
+Then, remove (or comment out) four lines below:
+
+message_sprite = Sprite();
+message_sprite.SetPosition(screen_width * 0.1, screen_height * 0.9, 10000);
+
+       my_image = Image.Text(text, 1, 1, 1);
+       message_sprite.SetImage(my_image);
+
+-------------------------------------------------------
+STEP : 3 (Remove Boot Messages)
+-------------------------------------------------------
+Open “/boot/cmdline.txt” as root.
+
+$ sudo nano /boot/cmdline.txt
+
+Then, replace “console=tty1” with “console=tty3”.
+
+add below at the end of the line
+
+splash quiet plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0
+
+Here are brief explanations.
+‘splash’ : enables splash image
+‘quiet’ : disable boot message texts
+‘plymouth.ignore-serial-consoles’ : not sure about this but seems it’s required when use Plymouth.
+‘logo.nologo’ : removes Raspberry Pi logo in top left corner.
+‘vt.global_cursor_default=0’ : removes blinking cursor.
+
+------------------------------------
+Replace Splash Image
+------------------------------------
+Now, unwanted images and texts are gone. Let’s replace the default splash image (/usr/share/plymouth/themes/pix/splash.png) with your own splash image.
+
+$ sudo cp ~/my_splash.png /usr/share/plymouth/themes/pix/splash.png
+
+As described in above assumption, “my_splash.png” should be your new splash image.
+
+Check out few more videos on Raspberry Pi.
+
+1. Raspberry Pi 4 Compute Module:    • Raspberry Pi 4 Compute Module | Lates...  
+
+2. Raspberry Pi Boot Process Logo Change:    • Raspberry Pi Boot Process | Silent Bo...  
+
+3. Raspberry Pi RGB LED Strip Control :    • Raspberry Pi RGB LED Control | Home A...  
+
+4. Raspberry Pi 4 Strip Acrylic Case :    • Review : Raspberry PI 4 Stripped Acry...  
+
+5. Raspberry Pi Node Red :    • Raspberry Pi Node Red  
+
+6. Raspberry Pi 400 Kit:    • Raspberry Pi | Pi 400 Keyboard Comput...  
+---------------------------------------------------------------------------------------------------------------
+
+DON'T FORGET!!!
+
+sudo update-initramfs -c -k $(uname -r)
+
+otherwise it will only change splash.png for shutdown 

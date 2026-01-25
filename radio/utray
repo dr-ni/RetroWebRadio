@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from PyQt5 import QtCore, QtWidgets
+
+
+# https://stackoverflow.com/questions/53245066/how-to-add-qslider-to-toolbar-in-mainwindow-using-pyqt5-in-python
+
+# https://stackoverflow.com/questions/16365152/make-qslider-work-in-qsystemtrayicon
+
+app = QApplication([]) 
+app.setQuitOnLastWindowClosed(False) 
+
+# Adding an icon 
+icon = QIcon("/home/uwe/pilotx/html/images/speaker.png") 
+
+# Adding item on the menu bar 
+tray = QSystemTrayIcon() 
+tray.setIcon(icon) 
+tray.setVisible(True) 
+
+# Creating the options 
+menu = QMenu() 
+option1 = QAction("Geeks for Geeks") 
+option2 = QAction("GFG") 
+menu.addAction(option1) 
+menu.addAction(option2) 
+
+slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+option2.triggered.connect(show())
+
+# To quit the app 
+quit = QAction("Quit") 
+quit.triggered.connect(app.quit) 
+menu.addAction(quit) 
+
+# Adding options to the System Tray 
+tray.setContextMenu(menu) 
+
+app.exec_() 
+

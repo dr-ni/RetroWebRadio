@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<global>
+<pages>2</pages>
+  <p1>
+    <count>8</count>
+    <s1>
+      <name>SWR 1</name>
+      <url>http://listen.shoutcast.com/swr4</url>
+    </s1>
+    <s2>
+      <name>SWR 2</name>
+      <url>http://listen.shoutcast.com/swr4</url>
+    </s2>
+    <s3>
+      <name>SWR 3</name>
+      <url>http://listen.shoutcast.com/swr4</url>
+    </s3>
+    <s4>
+      <name>Deutschlandfunk</name>
+      <url>#EXTM3U</url>
+    </s4>
+    <s5>
+      <name>Deutschlandfunk Kultur</name>
+      <url>#EXTM3U</url>
+    </s5>
+    <s6>
+      <name>Radio Dismuke</name>
+      <url>https://sslstream.okradio.net:80/</url>
+    </s6>
+    <s7>
+      <name>The 1920s Radio Network (AAC)</name>
+      <url>http://117.6.93.250:7001</url>
+    </s7>
+    <s8>
+      <name>NDR Kultur</name>
+      <url>http://51.15.177.152:8060/320</url>
+    </s8>
+  </p1>
+  <p2>
+    <count>5</count>
+    <s1>
+      <name>1jazz.ru - Vibraphone Jazz</name>
+      <url>#EXTM3U</url>
+    </s1>
+    <s2>
+      <name>FluxFM - XJAZZ</name>
+      <url>https://stream3.mfmstreaming.nl:1800/</url>
+    </s2>
+    <s3>
+      <name>Jazz Club</name>
+      <url>http://162.252.171.80:8002/stream</url>
+    </s3>
+    <s4>
+      <name>Nostalgie Jazz</name>
+      <url>http://listen.shoutcast.com/topradionostalgie</url>
+    </s4>
+    <s5>
+      <name>Radio Swiss Jazz</name>
+      <url>https://sslstream.okradio.net:80/</url>
+    </s5>
+  </p2>
+</global>

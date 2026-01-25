@@ -1,0 +1,4 @@
+#!/bin/bash
+mpc toggle 
+sleep 1
+echo "lpush done"
