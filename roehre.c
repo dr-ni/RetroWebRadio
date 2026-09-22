@@ -41,6 +41,7 @@
 #include <libgen.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include "stations.h"
 
 #define STATSPERCOL 10      // maximal stations per column
@@ -61,6 +62,7 @@
 #define SCAN_STEP 2         // px per tick while auto-scanning
 #define KEY_STEP 5          // px per cursor key press
 #define TRACK_MAX 512
+#define SAVE_DELAY_MS 2000  // save the dial position once it has settled
 
 #ifndef DATADIR
 #define DATADIR "/usr/local/share/retrowebradio"
@@ -92,6 +94,13 @@ static size_t textflow = 0;           // marquee offset in characters
 static char toast[128];               // short message at the bottom (volume, station)
 static uint64_t toast_timeout = 0;
 static int refresh_now = 1;
+static volatile sig_atomic_t stop_requested = 0;
+
+static void on_signal(int sig)
+{
+  (void)sig;
+  stop_requested = 1;  /* leave the main loop, save the position, exit */
+}
 
 /* monotonic milliseconds; 64 bit, never wraps */
 static uint64_t now_ms(void)
@@ -640,6 +649,69 @@ static int process_events(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* remember the dial position between runs                            */
+/* ------------------------------------------------------------------ */
+
+static char state_file[PATH_MAX + 16];
+static int saved_page = -1, saved_xpos = 0;
+
+/* $XDG_STATE_HOME/retrowebradio/position or ~/.local/state/... */
+static void init_state_file(void)
+{
+  const char *base = getenv("XDG_STATE_HOME");
+  const char *home = getenv("HOME");
+  char dir[PATH_MAX];
+
+  if (base != NULL && base[0] == '/')
+    snprintf(dir, sizeof(dir), "%s/retrowebradio", base);
+  else if (home != NULL) {
+    snprintf(dir, sizeof(dir), "%s/.local", home);
+    mkdir(dir, 0755);
+    snprintf(dir, sizeof(dir), "%s/.local/state", home);
+    mkdir(dir, 0755);
+    snprintf(dir, sizeof(dir), "%s/.local/state/retrowebradio", home);
+  } else
+    return;
+  mkdir(dir, 0755);
+  snprintf(state_file, sizeof(state_file), "%s/position", dir);
+}
+
+static void load_position(void)
+{
+  FILE *fp;
+  int page, x;
+
+  if (state_file[0] == '\0' || (fp = fopen(state_file, "r")) == NULL)
+    return;
+  if (fscanf(fp, "%d %d", &page, &x) == 2 &&
+      page >= 1 && page <= stations.pages &&
+      x >= -OFFSET_X && x <= WIN_WIDTH - OFFSET_X) {
+    current_page = page;
+    xpos = x;
+    saved_page = page;
+    saved_xpos = x;
+  }
+  fclose(fp);
+}
+
+static void save_position(void)
+{
+  char tmp[PATH_MAX + 24];
+  FILE *fp;
+
+  if (state_file[0] == '\0' || (current_page == saved_page && xpos == saved_xpos))
+    return;
+  snprintf(tmp, sizeof(tmp), "%s.tmp", state_file);
+  if ((fp = fopen(tmp, "w")) == NULL)
+    return;
+  fprintf(fp, "%d %d\n", current_page, xpos);
+  if (fclose(fp) == 0 && rename(tmp, state_file) == 0) {
+    saved_page = current_page;
+    saved_xpos = xpos;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* setup                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -692,7 +764,8 @@ int main(int argc, char *argv[])
   const char *stations_arg = NULL, *font_arg = NULL;
   const char *stations_path, *font_path;
   int fullscreen = 0, delay = 2, opt, running = 1;
-  uint64_t next_redraw = 0, next_scroll = 0, next_poll = 0, t;
+  uint64_t next_redraw = 0, next_scroll = 0, next_poll = 0, next_save = 0, t;
+  struct sigaction sa;
 
   while ((opt = getopt(argc, argv, "fs:F:d:h")) != -1) {
     switch (opt) {
@@ -710,9 +783,21 @@ int main(int argc, char *argv[])
   if (stations_load(stations_path, &stations) != 0)
     return 1;
   fprintf(stderr, "%d pages loaded from %s\n", stations.pages, stations_path);
+  init_state_file();
+  load_position();
+
+  /* pkill/logout (SIGTERM) and Ctrl+C: leave the loop and save the dial */
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = on_signal;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGTERM, &sa, NULL);
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGHUP, &sa, NULL);
 
   if (delay > 0)
     sleep((unsigned)delay);
+  if (stop_requested)
+    return 0;
   fprintf(stderr, "initializing...\n");
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
@@ -744,7 +829,7 @@ int main(int argc, char *argv[])
   }
 
   fprintf(stderr, "started...\n");
-  while (running) {
+  while (running && !stop_requested) {
     t = now_ms();
     running = process_events();
     scan_step();
@@ -766,8 +851,14 @@ int main(int argc, char *argv[])
       refresh_now = 0;
       next_redraw = t + IDLE_REDRAW_MS;
     }
+    if (t >= next_save) {
+      save_position();  /* writes only if the dial has moved */
+      next_save = t + SAVE_DELAY_MS;
+    }
     SDL_Delay(TICK_MS);
   }
+
+  save_position();
 
   if (tune_pid > 0)
     waitpid(tune_pid, NULL, 0);  /* let a pending tuning finish */

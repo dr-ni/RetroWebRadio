@@ -65,6 +65,9 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
 
+The dial position (page and tuner) is saved in `~/.local/state/retrowebradio/position`
+and restored on the next start, so the radio comes back on the last station.
+
 ## Tray icon
 
 `retrowebradio-tray` puts a radio icon into the panel's system tray (Gtk.StatusIcon).
