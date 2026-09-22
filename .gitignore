@@ -1,1 +1,13 @@
 roehre
+*.o
+stations.xml
+stations.xml.tmp
+radio/sendkey
+radio/lpoti
+radio/mpoti
+radio/rpoti
+radio/lpoti_pigpio
+radio/ky040_pigpio_example
+radio/mpdevent
+radio/list.xml
+radio/idlist.txt
