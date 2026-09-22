@@ -59,7 +59,25 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | Left / Right | move the tuner (wraps to the previous/next page) |
 | Up / Down | next / previous page |
 | r / l | scan to the next station right / left |
-| v, +, keypad + | volume +3 |
-| -, keypad - | volume -3 |
+| v, +, keypad +, volume-up key | volume +3 |
+| -, keypad -, volume-down key | volume -3 |
+| m, mute key | mute / unmute (restores the previous volume) |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
+
+## Tray icon
+
+`retrowebradio-tray` puts a speaker icon into the panel (AppIndicator like Onboard,
+Gtk.StatusIcon as fallback):
+
+- menu: current title, show/hide the radio, play/pause, louder, quieter, mute
+- middle click: mute on/off, scroll wheel: volume
+- the icon shows the volume level and follows changes made elsewhere (`mpc idleloop`)
+
+```sh
+sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
+./retrowebradio-tray &
+```
+
+It starts `roehre` from its own directory (or from `$PATH`). For autostart, add
+`/path/to/retrowebradio-tray` to the desktop session's startup applications.

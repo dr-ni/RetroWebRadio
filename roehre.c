@@ -158,6 +158,46 @@ static void mpc_volume(const char *delta)
   run_async(argv);
 }
 
+/* current mpd volume in percent, -1 if unknown (mpd down or no mixer) */
+static int mpc_get_volume(void)
+{
+  char line[128];
+  int vol = -1;
+  FILE *fp = popen("mpc volume 2>/dev/null", "r");
+
+  if (fp == NULL)
+    return -1;
+  if (fgets(line, sizeof(line), fp) != NULL)
+    if (sscanf(line, "volume: %d", &vol) != 1)
+      vol = -1;
+  pclose(fp);
+  return vol;
+}
+
+/* mute: remember the volume and set 0; unmute: restore it */
+static void mpc_toggle_mute(void)
+{
+  static int saved = 0;
+  char arg[16], msg[32];
+  int vol = mpc_get_volume();
+  char *argv[] = { "mpc", "-q", "volume", arg, NULL };
+
+  if (vol < 0) {
+    show_toast("No volume control", 1000);
+    return;
+  }
+  if (vol > 0) {
+    saved = vol;
+    snprintf(arg, sizeof(arg), "0");
+    snprintf(msg, sizeof(msg), "Mute");
+  } else {
+    snprintf(arg, sizeof(arg), "%d", saved > 0 ? saved : 50);
+    snprintf(msg, sizeof(msg), "Volume %s%%", arg);
+  }
+  run_async(argv);
+  show_toast(msg, 800);
+}
+
 /*
  * Tune to url (or silence if url is empty). The three mpc calls must run
  * in order, so they run sequentially in one child. A still running
@@ -566,12 +606,18 @@ static int process_events(void)
         break;
       case SDLK_v:
       case SDLK_PLUS:
+      case SDLK_VOLUMEUP:
       case SDLK_KP_PLUS:
         mpc_volume("+3");
         show_toast("Volume +3", 300);
         break;
+      case SDLK_m:
+      case SDLK_AUDIOMUTE:
+        mpc_toggle_mute();
+        break;
       case SDLK_MINUS:
       case SDLK_KP_MINUS:
+      case SDLK_VOLUMEDOWN:
         mpc_volume("-3");
         show_toast("Volume -3", 300);
         break;
