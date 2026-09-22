@@ -67,12 +67,14 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 
 ## Tray icon
 
-`retrowebradio-tray` puts a speaker icon into the panel (AppIndicator like Onboard,
-Gtk.StatusIcon as fallback):
+`retrowebradio-tray` puts a radio icon into the panel. It uses the classic system tray
+(Gtk.StatusIcon) unless the panel runs a StatusNotifier/AppIndicator host; force one with
+`RETROWEBRADIO_TRAY=statusicon` or `RETROWEBRADIO_TRAY=indicator`.
 
 - menu: current title, show/hide the radio, play/pause, louder, quieter, mute
 - middle click: mute on/off, scroll wheel: volume
-- the icon shows the volume level and follows changes made elsewhere (`mpc idleloop`)
+- the icon is crossed out when muted and grey when mpd is not reachable; the tooltip
+  shows volume and title, updated immediately via `mpc idleloop`
 
 ```sh
 sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1

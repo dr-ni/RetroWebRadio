@@ -7,8 +7,9 @@ Left click / menu:  show or hide the radio (roehre), louder, quieter,
 Middle click:       mute on/off
 Scroll wheel:       volume up/down
 
-Uses AyatanaAppIndicator3 (or AppIndicator3) when available, otherwise
-Gtk.StatusIcon. Talks to mpd through mpc; state updates come from
+Uses Gtk.StatusIcon (classic system tray) unless the panel provides a
+StatusNotifier host, then AyatanaAppIndicator3/AppIndicator3.
+Force one with RETROWEBRADIO_TRAY=statusicon or =indicator. Talks to mpd through mpc; state updates come from
 `mpc idleloop`, so volume changes made elsewhere show up immediately.
 
 GNU GENERAL PUBLIC LICENSE Version 3
@@ -21,20 +22,44 @@ import sys
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Gdk  # noqa: E402
+from gi.repository import GLib, Gio, Gtk, Gdk  # noqa: E402
 
-Indicator = None
-for _name in ("AyatanaAppIndicator3", "AppIndicator3"):
+
+def have_indicator_host():
+    """True if a StatusNotifier host (AppIndicator panel) is running."""
     try:
-        gi.require_version(_name, "0.1")
-        Indicator = getattr(__import__("gi.repository", fromlist=[_name]), _name)
-        break
-    except (ValueError, ImportError):
-        pass
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        res = bus.call_sync("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+                            "org.freedesktop.DBus.Properties", "Get",
+                            GLib.Variant("(ss)", ("org.kde.StatusNotifierWatcher",
+                                                  "IsStatusNotifierHostRegistered")),
+                            GLib.VariantType("(v)"), Gio.DBusCallFlags.NONE, 1000, None)
+        return bool(res.unpack()[0])
+    except GLib.Error:
+        return False
+
+
+def load_indicator():
+    mode = os.environ.get("RETROWEBRADIO_TRAY", "auto")
+    if mode == "statusicon" or (mode == "auto" and not have_indicator_host()):
+        return None
+    # the GTK3 appindicator libs are deprecated upstream but still work
+    GLib.log_set_handler("libayatana-appindicator", GLib.LogLevelFlags.LEVEL_WARNING,
+                         lambda *a: None)
+    for name in ("AyatanaAppIndicator3", "AppIndicator3"):
+        try:
+            gi.require_version(name, "0.1")
+            return getattr(__import__("gi.repository", fromlist=[name]), name)
+        except (ValueError, ImportError):
+            pass
+    return None
 
 STEP = 5                # volume step in percent
 RESTORE_DEFAULT = 50    # unmute to this if the old volume is unknown
 HERE = os.path.dirname(os.path.realpath(__file__))
+ICON_DIR = next((d for d in (os.path.join(HERE, "icons"),
+                             "/usr/local/share/retrowebradio/icons")
+                 if os.path.isfile(os.path.join(d, "retrowebradio.svg"))), None)
 
 
 def mpc(*args):
@@ -53,10 +78,21 @@ def find_roehre():
     return None
 
 
+def icon_for(state):
+    """state: '', 'muted' or 'offline' -> (file or None, theme icon name)"""
+    name = "retrowebradio" + ("-" + state if state else "")
+    fallback = {"": "audio-volume-high", "muted": "audio-volume-muted",
+                "offline": "audio-volume-muted"}[state]
+    if ICON_DIR:
+        return os.path.join(ICON_DIR, name + ".svg"), name
+    return None, fallback
+
+
 class Tray:
-    def __init__(self):
+    def __init__(self, Indicator=None):
         self.volume = None        # None: mpd has no mixer / not reachable
         self.reachable = False
+        self.shown_icon = None
         self.saved_volume = None  # volume before mute
         self.playing = False
         self.title = ""
@@ -67,8 +103,10 @@ class Tray:
         self.menu = self.build_menu()
         if Indicator is not None:
             self.ind = Indicator.Indicator.new(
-                "retrowebradio", "audio-volume-medium",
+                "retrowebradio", icon_for("")[1],
                 Indicator.IndicatorCategory.APPLICATION_STATUS)
+            if ICON_DIR:
+                self.ind.set_icon_theme_path(ICON_DIR)
             self.ind.set_status(Indicator.IndicatorStatus.ACTIVE)
             self.ind.set_title("RetroWebRadio")
             self.ind.set_menu(self.menu)
@@ -141,16 +179,14 @@ class Tray:
     def update_widgets(self):
         muted = self.volume == 0
         if not self.reachable:
-            icon, state = "audio-volume-muted", "mpd not reachable"
+            kind, state = "offline", "mpd not reachable"
         elif self.volume is None:
-            icon, state = "audio-volume-medium", "no volume control (mixer_type)"
+            kind, state = "", "no volume control (mixer_type)"
         elif muted:
-            icon, state = "audio-volume-muted", "muted"
+            kind, state = "muted", "muted"
         else:
-            icon = ("audio-volume-low" if self.volume < 34 else
-                    "audio-volume-medium" if self.volume < 67 else
-                    "audio-volume-high")
-            state = "volume %d%%" % self.volume
+            kind, state = "", "volume %d%%" % self.volume
+        icon_file, icon_name = icon_for(kind)
         tip = "RetroWebRadio – %s" % state
         if self.title:
             tip += "\n" + self.title
@@ -164,11 +200,17 @@ class Tray:
         self.updating = False
 
         if self.ind is not None:
-            self.ind.set_icon_full(icon, state)
+            if self.shown_icon != (icon_name, state):
+                self.ind.set_icon_full(icon_name, state)
             self.ind.set_title(tip)
         else:
-            self.icon.set_from_icon_name(icon)
+            if self.shown_icon != (icon_name, state):
+                if icon_file:
+                    self.icon.set_from_file(icon_file)
+                else:
+                    self.icon.set_from_icon_name(icon_name)
             self.icon.set_tooltip_text(tip)
+        self.shown_icon = (icon_name, state)
 
     def after(self, _result):
         self.refresh()
@@ -271,7 +313,7 @@ def main():
     if shutil.which("mpc") is None:
         sys.exit("retrowebradio-tray: mpc not found (sudo apt install mpc)")
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    Tray()
+    tray = Tray(load_indicator())  # noqa: F841 (keep a reference)
     Gtk.main()
 
 

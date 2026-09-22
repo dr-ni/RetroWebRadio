@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- RetroWebRadio tray icon, GPLv3 -->
+  <rect x="12" y="52" width="8" height="5" rx="1.5" fill="#3b2410"/>
+  <rect x="44" y="52" width="8" height="5" rx="1.5" fill="#3b2410"/>
+  <rect x="3" y="12" width="58" height="42" rx="9" fill="#c8782a" stroke="#4a2a0e" stroke-width="2.5"/>
+  <rect x="9" y="18" width="26" height="30" rx="4" fill="#3b2410"/>
+  <g stroke="#e8c98a" stroke-width="2.4" stroke-linecap="round">
+    <line x1="14" y1="22" x2="14" y2="44"/>
+    <line x1="19" y1="22" x2="19" y2="44"/>
+    <line x1="24" y1="22" x2="24" y2="44"/>
+    <line x1="29" y1="22" x2="29" y2="44"/>
+  </g>
+  <rect x="39" y="18" width="17" height="10" rx="2" fill="#f3e3a8" stroke="#4a2a0e" stroke-width="1.5"/>
+  <line x1="46" y1="19.5" x2="46" y2="26.5" stroke="#ff7700" stroke-width="2"/>
+  <circle cx="47.5" cy="40" r="7" fill="#3b2410" stroke="#f3e3a8" stroke-width="2"/>
+  <line x1="47.5" y1="40" x2="47.5" y2="34.5" stroke="#f3e3a8" stroke-width="2" stroke-linecap="round"/>
+</svg>

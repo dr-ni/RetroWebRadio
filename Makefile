@@ -29,6 +29,8 @@ install: roehre stations.xml
 	install -d $(DESTDIR)$(RADIO_DIR)
 	install -m 755 roehre retrowebradio-tray $(DESTDIR)$(RADIO_DIR)/
 	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(RADIO_DIR)/
+	install -d $(DESTDIR)$(RADIO_DIR)/icons
+	install -m 644 icons/*.svg $(DESTDIR)$(RADIO_DIR)/icons/
 
 clean:
 	rm -f roehre *.o stations.xml.tmp
