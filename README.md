@@ -73,6 +73,8 @@ start it with `RETROWEBRADIO_TRAY=indicator`.
 
 - menu: current title, show/hide the radio, play/pause, louder, quieter, mute
 - middle click: mute on/off, scroll wheel: volume
+- "Quit" closes the radio GUI, stops playback (`mpc stop`) and ends the tray
+- menu in German when the locale is German, English otherwise
 - the icon is crossed out when muted and grey when mpd is not reachable; the tooltip
   shows volume and title, updated immediately via `mpc idleloop`
 

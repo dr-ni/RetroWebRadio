@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import warnings
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -42,6 +43,36 @@ def load_indicator():
     return None
 
 STEP = 5                # volume step in percent
+
+# Gtk.StatusIcon is deprecated in GTK3 but still the most widely shown tray
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+TEXTS = {
+    "de": {
+        "Show radio": "Radio anzeigen", "Hide radio": "Radio ausblenden",
+        "Play": "Abspielen", "Pause": "Pause",
+        "Louder": "Lauter", "Quieter": "Leiser", "Mute": "Stumm",
+        "Quit": "Beenden",
+        "mpd not reachable": "mpd nicht erreichbar",
+        "no volume control (mixer_type)": "keine Lautstärkeregelung (mixer_type)",
+        "muted": "stumm", "volume %d%%": "Lautstärke %d%%",
+    },
+}
+
+
+def _lang():
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"):
+        val = os.environ.get(var)
+        if val:
+            return val.split(":")[0][:2]
+    return "en"
+
+
+_T = TEXTS.get(_lang(), {})
+
+
+def _(text):
+    return _T.get(text, text)
 RESTORE_DEFAULT = 50    # unmute to this if the old volume is unknown
 HERE = os.path.dirname(os.path.realpath(__file__))
 ICON_DIR = next((d for d in (os.path.join(HERE, "icons"),
@@ -105,7 +136,7 @@ class Tray:
             self.icon = Gtk.StatusIcon()
             self.icon.set_title("RetroWebRadio")
             self.icon.connect("popup-menu", self.on_popup)
-            self.icon.connect("activate", lambda *_: self.toggle_gui())
+            self.icon.connect("activate", lambda *_a: self.toggle_gui())
             self.icon.connect("scroll-event", self.on_icon_scroll)
             self.icon.connect("button-press-event", self.on_icon_button)
 
@@ -121,27 +152,27 @@ class Tray:
         m.append(self.item_title)
         m.append(Gtk.SeparatorMenuItem())
 
-        self.item_gui = Gtk.MenuItem(label="Show radio")
-        self.item_gui.connect("activate", lambda *_: self.toggle_gui())
+        self.item_gui = Gtk.MenuItem(label=_("Show radio"))
+        self.item_gui.connect("activate", lambda *_a: self.toggle_gui())
         m.append(self.item_gui)
 
-        self.item_play = Gtk.MenuItem(label="Play")
-        self.item_play.connect("activate", lambda *_: self.after(mpc("toggle")))
+        self.item_play = Gtk.MenuItem(label=_("Play"))
+        self.item_play.connect("activate", lambda *_a: self.after(mpc("toggle")))
         m.append(self.item_play)
         m.append(Gtk.SeparatorMenuItem())
 
-        for label, delta in (("Louder", +STEP), ("Quieter", -STEP)):
+        for label, delta in ((_("Louder"), +STEP), (_("Quieter"), -STEP)):
             it = Gtk.MenuItem(label=label)
             it.connect("activate", lambda _w, d=delta: self.change_volume(d))
             m.append(it)
 
-        self.item_mute = Gtk.CheckMenuItem(label="Mute")
+        self.item_mute = Gtk.CheckMenuItem(label=_("Mute"))
         self.item_mute.connect("toggled", self.on_mute_toggled)
         m.append(self.item_mute)
         m.append(Gtk.SeparatorMenuItem())
 
-        quit_item = Gtk.MenuItem(label="Quit tray")
-        quit_item.connect("activate", lambda *_: Gtk.main_quit())
+        quit_item = Gtk.MenuItem(label=_("Quit"))
+        quit_item.connect("activate", lambda *_a: self.quit())
         m.append(quit_item)
         m.show_all()
         return m
@@ -166,13 +197,13 @@ class Tray:
     def update_widgets(self):
         muted = self.volume == 0
         if not self.reachable:
-            kind, state = "offline", "mpd not reachable"
+            kind, state = "offline", _("mpd not reachable")
         elif self.volume is None:
-            kind, state = "", "no volume control (mixer_type)"
+            kind, state = "", _("no volume control (mixer_type)")
         elif muted:
-            kind, state = "muted", "muted"
+            kind, state = "muted", _("muted")
         else:
-            kind, state = "", "volume %d%%" % self.volume
+            kind, state = "", _("volume %d%%") % self.volume
         icon_file, icon_name = icon_for(kind)
         tip = "RetroWebRadio – %s" % state
         if self.title:
@@ -180,9 +211,9 @@ class Tray:
 
         self.updating = True
         self.item_title.set_label(self.title or state)
-        self.item_play.set_label("Pause" if self.playing else "Play")
+        self.item_play.set_label(_("Pause") if self.playing else _("Play"))
         self.item_mute.set_active(muted)
-        self.item_gui.set_label("Hide radio" if self.gui_running() else "Show radio")
+        self.item_gui.set_label(_("Hide radio") if self.gui_running() else _("Show radio"))
         self.item_gui.set_sensitive(self.gui_running() or find_roehre() is not None)
         self.updating = False
 
@@ -239,6 +270,17 @@ class Tray:
 
     def on_popup(self, icon, button, time):
         self.menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, time)
+
+    def quit(self):
+        """Quit everything: radio GUI, playback and the tray itself."""
+        if self.gui_running():
+            if self.roehre is not None and self.roehre.poll() is None:
+                self.roehre.terminate()
+            subprocess.run(["pkill", "-x", "roehre"])
+        mpc("stop")
+        if self.idle is not None and self.idle.poll() is None:
+            self.idle.terminate()
+        Gtk.main_quit()
 
     # --------------------------------------------------------------- GUI
     def gui_running(self):
