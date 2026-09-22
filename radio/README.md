@@ -31,7 +31,9 @@ internal pull-up; DT/CLK use the pull-ups on the KY-040 board.
 ## Build and install
 
 ```sh
-sudo apt install libx11-dev libxtst-dev wiringpi   # or: pigpio
+sudo apt install libx11-dev libxtst-dev
+# plus wiringPi (.deb from github.com/WiringPi/WiringPi/releases)
+# or pigpio (sudo apt install pigpio; not supported on the Pi 5)
 make                    # sendkey, lpoti, mpoti, rpoti (wiringPi)
 make PIGPIO=1           # same with pigpio (daemons must run as root)
 make install            # to RADIO_DIR, default /home/radio/radio
