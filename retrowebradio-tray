@@ -7,9 +7,9 @@ Left click / menu:  show or hide the radio (roehre), louder, quieter,
 Middle click:       mute on/off
 Scroll wheel:       volume up/down
 
-Uses Gtk.StatusIcon (classic system tray) unless the panel provides a
-StatusNotifier host, then AyatanaAppIndicator3/AppIndicator3.
-Force one with RETROWEBRADIO_TRAY=statusicon or =indicator. Talks to mpd through mpc; state updates come from
+Uses Gtk.StatusIcon (classic system tray). For panels that only show
+AppIndicators (e.g. GNOME with the AppIndicator extension) start it with
+RETROWEBRADIO_TRAY=indicator. Talks to mpd through mpc; state updates come from
 `mpc idleloop`, so volume changes made elsewhere show up immediately.
 
 GNU GENERAL PUBLIC LICENSE Version 3
@@ -22,26 +22,13 @@ import sys
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gio, Gtk, Gdk  # noqa: E402
-
-
-def have_indicator_host():
-    """True if a StatusNotifier host (AppIndicator panel) is running."""
-    try:
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        res = bus.call_sync("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
-                            "org.freedesktop.DBus.Properties", "Get",
-                            GLib.Variant("(ss)", ("org.kde.StatusNotifierWatcher",
-                                                  "IsStatusNotifierHostRegistered")),
-                            GLib.VariantType("(v)"), Gio.DBusCallFlags.NONE, 1000, None)
-        return bool(res.unpack()[0])
-    except GLib.Error:
-        return False
+from gi.repository import GLib, Gtk, Gdk  # noqa: E402
 
 
 def load_indicator():
-    mode = os.environ.get("RETROWEBRADIO_TRAY", "auto")
-    if mode == "statusicon" or (mode == "auto" and not have_indicator_host()):
+    # a registered StatusNotifier host does not mean the panel shows the
+    # items, so auto-detection is unreliable: classic tray unless asked
+    if os.environ.get("RETROWEBRADIO_TRAY", "statusicon") != "indicator":
         return None
     # the GTK3 appindicator libs are deprecated upstream but still work
     GLib.log_set_handler("libayatana-appindicator", GLib.LogLevelFlags.LEVEL_WARNING,

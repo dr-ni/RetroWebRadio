@@ -67,9 +67,9 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 
 ## Tray icon
 
-`retrowebradio-tray` puts a radio icon into the panel. It uses the classic system tray
-(Gtk.StatusIcon) unless the panel runs a StatusNotifier/AppIndicator host; force one with
-`RETROWEBRADIO_TRAY=statusicon` or `RETROWEBRADIO_TRAY=indicator`.
+`retrowebradio-tray` puts a radio icon into the panel's system tray (Gtk.StatusIcon).
+For panels that only show AppIndicators (e.g. GNOME with the AppIndicator extension)
+start it with `RETROWEBRADIO_TRAY=indicator`.
 
 - menu: current title, show/hide the radio, play/pause, louder, quieter, mute
 - middle click: mute on/off, scroll wheel: volume
