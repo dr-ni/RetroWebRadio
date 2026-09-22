@@ -15,14 +15,17 @@
 #define GREEN "\x1b[32;06m"
 #define YELLOW "\x1b[33;06m"
 
-void status_changed(MpdObj *mi, ChangedStatusType what)
+void status_changed(MpdObj *mi, ChangedStatusType what, void *userdata)
 {
+        (void)userdata;
         if(what&MPD_CST_SONGID)
         {
                 mpd_Song *song = mpd_playlist_get_current_song(mi);
                 if(song)
                 {
-                        printf(GREEN"Song:"RESET" %s - %s\n", song->artist, song->title);
+                        printf(GREEN"Song:"RESET" %s - %s\n",
+                               song->artist ? song->artist : (song->name ? song->name : "?"),
+                               song->title ? song->title : "?");
                 }
         }
 
@@ -47,7 +50,7 @@ int main()
 
         obj = mpd_new(hostname, iport,password);
 
-        mpd_signal_connect_status_changed(obj,(StatusChangedCallback)status_changed, NULL);
+        mpd_signal_connect_status_changed(obj, status_changed, NULL);
         mpd_set_connection_timeout(obj, 10);
 
         if(!mpd_connect(obj))

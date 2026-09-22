@@ -1,5 +1,11 @@
 #!/bin/bash
-export DISPLAY=:0
-pgrep roehre && killall roehre || /home/radio/radio/roehre>/dev/null 2>&1 &
+# right knob pushed: toggle the radio GUI
+export DISPLAY=${DISPLAY:-:0}
+RADIO_DIR=${RADIO_DIR:-/home/radio/radio}
+if pgrep -x roehre >/dev/null; then
+  pkill -x roehre
+else
+  "$RADIO_DIR/roehre" -f -d 0 >/dev/null 2>&1 &
+fi
 sleep 1
 echo "rpush done"

@@ -5,7 +5,7 @@ do
   id=$(pgrep getcov )
   echo "pid=$id"
   kill "$id"
-  /home/radio/radio/getcov.sh > /dev/null 2>&1 &
+  ${RADIO_DIR:-/home/radio/radio}/getcov.sh > /dev/null 2>&1 &
   mpc idle player
 done
 

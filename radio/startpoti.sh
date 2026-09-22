@@ -1,50 +1,22 @@
 #!/bin/bash
-echo
-/home/radio/radio/lpoti > /tmp/lpoti.log 2>&1 &
-sleep 1
-if pgrep -x "lpoti"
-then
-    echo
-    echo "Running"
-else
-    echo
-    echo "Stopped"
-	echo "retry" >> /tmp/lpoti.log
-        killall lpoti
-        /home/radio/radio/lpoti >> /tmp/lpoti.log 2>&1 &
-fi
-sleep 1
-/home/radio/radio/mpoti > /tmp/mpoti.log 2>&1 &
-sleep 1
-if pgrep -x "mpoti"
-then
-    echo
-    echo "Running"
-else
-    echo
-    echo "Stopped"
-        echo "retry" >> /tmp/mpoti.log
-        killall mpoti
-        /home/radio/radio/mpoti >> /tmp/mpoti.log 2>&1 &
-fi
-sleep 1
-/home/radio/radio/rpoti > /tmp/rpoti.log 2>&1 &
-sleep 1
-if pgrep -x "rpoti"
-then
-    echo
-    echo "Running"
-else
-    echo
-    echo "Stopped"
-        echo "retry" >> /tmp/rpoti.log
-        killall rpoti
-        /home/radio/radio/rpoti >> /tmp/rpoti.log 2>&1 &
-fi
-echo "potid started"
+# start the three knob daemons (restart once if a start fails) and the radio
+RADIO_DIR=${RADIO_DIR:-/home/radio/radio}
 
-mpc enable only 1 > /dev/null 2>&1 &
-mpc volume 50 > /dev/null 2>&1 &
+for p in lpoti mpoti rpoti; do
+  "$RADIO_DIR/$p" > "/tmp/$p.log" 2>&1 &
+  sleep 1
+  if pgrep -x "$p" >/dev/null; then
+    echo "$p running"
+  else
+    echo "$p stopped, retrying"
+    echo "retry" >> "/tmp/$p.log"
+    pkill -x "$p"
+    "$RADIO_DIR/$p" >> "/tmp/$p.log" 2>&1 &
+  fi
+done
+echo "potis started"
+
+mpc enable only 1 > /dev/null 2>&1
+mpc volume 50 > /dev/null 2>&1
 mpc play > /dev/null 2>&1 &
 echo "radio started"
-
