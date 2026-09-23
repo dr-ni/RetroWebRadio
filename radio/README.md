@@ -37,7 +37,7 @@ sudo apt install libx11-dev libxtst-dev
 make                    # sendkey, lpoti, mpoti, rpoti (wiringPi)
 make PIGPIO=1           # same with pigpio (daemons must run as root)
 make install            # to RADIO_DIR, default /home/radio/radio
-make -C .. install      # roehre, font and stations.xml to the same place
+make -C .. install-pi   # roehre, font and stations.xml to the same place
 ```
 
 Use the same `RADIO_DIR=...` for both installs if you change it; the

@@ -1,8 +1,17 @@
 # RetroWebRadio
 #
-#   make                 build roehre and stations.xml
-#   make install         install into $(RADIO_DIR) (default /home/radio/radio)
-#   make -C radio        build the Raspberry Pi helpers (see radio/README.md)
+#   make                  build roehre and stations.xml
+#   sudo make install     system-wide into PREFIX (default /usr/local),
+#                         with entry in the application menu
+#   sudo make uninstall   remove it again
+#   make install-desktop  menu entry for the current user only, running
+#                         roehre from BINDIR (default: this directory)
+#   make install-pi       everything into RADIO_DIR (default
+#                         /home/radio/radio), the Raspberry Pi layout
+#   make -C radio         build the Raspberry Pi helpers (see radio/README.md)
+#
+# PREFIX is compiled into roehre (data directory); run 'make clean' after
+# changing it.
 
 CC       ?= gcc
 PKGS      = sdl2 SDL2_ttf libxml-2.0
@@ -10,6 +19,9 @@ CFLAGS   ?= -O2 -g
 CFLAGS   += -Wall -Wextra -std=c99 $(shell pkg-config --cflags $(PKGS))
 LDLIBS   += $(shell pkg-config --libs $(PKGS))
 
+PREFIX    ?= /usr/local
+DATADIR    = $(PREFIX)/share/retrowebradio
+CPPFLAGS  += -DDATADIR='"$(DATADIR)"'
 RADIO_DIR ?= /home/radio/radio
 STATIONS_PER_PAGE ?= 20
 
@@ -26,6 +38,29 @@ stations.xml: stationslist.txt stationslist2xml.sh
 	mv $@.tmp $@
 
 install: roehre stations.xml
+	install -d $(DESTDIR)$(PREFIX)/bin $(DESTDIR)$(DATADIR)/icons \
+	           $(DESTDIR)$(PREFIX)/share/applications \
+	           $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
+	install -m 755 roehre retrowebradio-tray $(DESTDIR)$(PREFIX)/bin/
+	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(DATADIR)/
+	install -m 644 icons/*.svg $(DESTDIR)$(DATADIR)/icons/
+	install -m 644 icons/retrowebradio.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/
+	sed 's|@BINDIR@|$(PREFIX)/bin|g' retrowebradio.desktop.in \
+	    > $(DESTDIR)$(PREFIX)/share/applications/retrowebradio.desktop
+	@[ -n "$(DESTDIR)" ] || ! command -v update-desktop-database >/dev/null || \
+	    update-desktop-database -q $(PREFIX)/share/applications
+	@[ -n "$(DESTDIR)" ] || ! command -v gtk-update-icon-cache >/dev/null || \
+	    gtk-update-icon-cache -q -t $(PREFIX)/share/icons/hicolor || true
+
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/roehre $(DESTDIR)$(PREFIX)/bin/retrowebradio-tray \
+	      $(DESTDIR)$(PREFIX)/share/applications/retrowebradio.desktop \
+	      $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/retrowebradio.svg
+	rm -rf $(DESTDIR)$(DATADIR)
+	@[ -n "$(DESTDIR)" ] || ! command -v update-desktop-database >/dev/null || \
+	    update-desktop-database -q $(PREFIX)/share/applications
+
+install-pi: roehre stations.xml
 	install -d $(DESTDIR)$(RADIO_DIR)
 	install -m 755 roehre retrowebradio-tray $(DESTDIR)$(RADIO_DIR)/
 	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(RADIO_DIR)/
@@ -41,7 +76,8 @@ install-desktop:
 	install -d $(USER_PREFIX)/share/applications $(USER_PREFIX)/share/icons/hicolor/scalable/apps
 	install -m 644 icons/retrowebradio.svg $(USER_PREFIX)/share/icons/hicolor/scalable/apps/
 	sed 's|@BINDIR@|$(BINDIR)|g' retrowebradio.desktop.in > $(USER_PREFIX)/share/applications/retrowebradio.desktop
-	-update-desktop-database -q $(USER_PREFIX)/share/applications 2>/dev/null
+	@! command -v update-desktop-database >/dev/null || \
+	    update-desktop-database -q $(USER_PREFIX)/share/applications
 
 uninstall-desktop:
 	rm -f $(USER_PREFIX)/share/applications/retrowebradio.desktop \
@@ -50,4 +86,4 @@ uninstall-desktop:
 clean:
 	rm -f roehre *.o stations.xml.tmp
 
-.PHONY: all install install-desktop uninstall-desktop clean
+.PHONY: all install uninstall install-pi install-desktop uninstall-desktop clean

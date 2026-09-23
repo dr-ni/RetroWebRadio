@@ -25,16 +25,18 @@ sudo apt install mpd mpc libsdl2-dev libsdl2-ttf-dev libxml2-dev pkg-config
 
 ```sh
 make                 # builds roehre and stations.xml from stationslist.txt
-make install         # optional: copies roehre, font and stations.xml to RADIO_DIR
-                     # (default /home/radio/radio; make install RADIO_DIR=...)
+sudo make install    # system-wide (PREFIX=/usr/local): roehre and retrowebradio-tray
+                     # in bin/, data in share/retrowebradio, entry in the
+                     # application menu (Audio/Video) with the radio icon
+sudo make uninstall
 ```
 
-For a menu entry and the radio icon in the taskbar / window list of the current user:
+Without root, `make install-desktop` adds a menu entry for the current user only that runs
+`roehre` from this directory (`BINDIR=...` to change). For the Raspberry Pi layout
+(everything in one directory) use `make install-pi RADIO_DIR=/home/radio/radio`.
 
-```sh
-make install-desktop                 # launcher runs roehre from this directory
-make install-desktop BINDIR=/home/radio/radio   # or from an install directory
-```
+An installed `roehre` looks for `stations.xml` in `~/.config/retrowebradio/` before the
+system-wide copy, so every user can keep an own station list.
 
 The window itself always carries the radio icon and the window class `retrowebradio`.
 
@@ -59,7 +61,7 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | Option | Meaning |
 |--------|---------|
 | `-f` | fullscreen, scaled to the display with the aspect ratio kept |
-| `-s` | station list; default: next to the binary, then `./`, then `/usr/local/share/retrowebradio` |
+| `-s` | station list; default: next to the binary, `./`, `~/.config/retrowebradio/`, `PREFIX/share/retrowebradio` |
 | `-F` | TrueType font, searched like `-s` (default `VeraMono.ttf`) |
 | `-d` | startup delay in seconds (default 2, avoids starting behind the taskbar at boot) |
 

@@ -815,7 +815,8 @@ static void handle_window_request(int req)
 
 /*
  * Locate a data file: explicit path, else next to the executable,
- * else current directory, else DATADIR.
+ * else current directory, else ~/.config/retrowebradio (a user's own
+ * station list), else DATADIR (make install).
  */
 static const char *find_datafile(const char *override, const char *name,
                                  char *buf, size_t size)
@@ -835,6 +836,17 @@ static const char *find_datafile(const char *override, const char *name,
   }
   if (access(name, R_OK) == 0)
     return name;
+  {
+    const char *cfg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (cfg != NULL && cfg[0] == '/')
+      snprintf(buf, size, "%s/retrowebradio/%s", cfg, name);
+    else if (home != NULL)
+      snprintf(buf, size, "%s/.config/retrowebradio/%s", home, name);
+    else
+      buf[0] = '\0';
+    if (buf[0] != '\0' && access(buf, R_OK) == 0)
+      return buf;
+  }
   snprintf(buf, size, "%s/%s", DATADIR, name);
   return buf;
 }
@@ -844,7 +856,8 @@ static void usage(const char *prog)
   fprintf(stderr,
           "usage: %s [-f] [-s stations.xml] [-F font.ttf] [-d seconds]\n"
           "  -f  fullscreen (scaled, aspect ratio kept)\n"
-          "  -s  station list (default: next to the binary, ./, " DATADIR ")\n"
+          "  -s  station list (default: next to the binary, ./,\n"
+          "      ~/.config/retrowebradio/, " DATADIR ")\n"
           "  -F  TrueType font (default: VeraMono.ttf, searched like -s)\n"
           "  -d  startup delay in seconds (default 2, avoids starting\n"
           "      behind the taskbar during boot)\n", prog);

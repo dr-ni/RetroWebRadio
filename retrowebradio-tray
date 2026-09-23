@@ -80,6 +80,9 @@ def _(text):
 RESTORE_DEFAULT = 50    # unmute to this if the old volume is unknown
 HERE = os.path.dirname(os.path.realpath(__file__))
 ICON_DIR = next((d for d in (os.path.join(HERE, "icons"),
+                             # make install: PREFIX/bin -> PREFIX/share/...
+                             os.path.normpath(os.path.join(HERE, "..", "share",
+                                                           "retrowebradio", "icons")),
                              "/usr/local/share/retrowebradio/icons")
                  if os.path.isfile(os.path.join(d, "retrowebradio.svg"))), None)
 
