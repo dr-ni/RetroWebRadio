@@ -21,6 +21,43 @@ See [radio/README.md](radio/README.md).
 sudo apt install mpd mpc libsdl2-dev libsdl2-ttf-dev libxml2-dev pkg-config
 ```
 
+## Setting up mpd
+
+roehre only controls mpd through `mpc`. If mpd is not running, the status line shows
+`MPD error: Connection refused` and nothing plays.
+
+```sh
+sudo apt install mpd mpc
+sudo systemctl enable --now mpd
+mpc status          # must answer without an error
+```
+
+Once `mpc status` works, roehre starts playing about one second after the tuner stops
+on a station.
+
+If you hear nothing, the system mpd usually cannot reach the desktop's sound server.
+With PipeWire or PulseAudio, running mpd as a user service with its own configuration
+is easier:
+
+```sh
+sudo systemctl disable --now mpd
+mkdir -p ~/.config/mpd
+cat > ~/.config/mpd/mpd.conf <<'EOF'
+music_directory "~/Music"
+db_file "~/.config/mpd/database"
+state_file "~/.config/mpd/state"
+audio_output {
+    type "pipewire"
+    name "PipeWire"
+}
+EOF
+systemctl --user enable --now mpd
+```
+
+With PulseAudio use `type "pulse"` instead. If `mpc volume` reports `n/a`, add
+`mixer_type "software"` to the `audio_output` block and restart mpd
+(`systemctl --user restart mpd`), otherwise volume and mute have no effect.
+
 ## Build
 
 ```sh
