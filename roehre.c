@@ -107,6 +107,7 @@ static int refresh_now = 1;
 static int cabinet_on = 0;            // draw the radio case around the dial
 static int cur_volume = -1;           // last known mpd volume, -1 unknown
 static int cur_paused = 0;            // mpd reports [paused]
+static const char *cabinet_font;      // fallback font for the key labels
 static int pressed_key = -1;          // cabinet key held down with the mouse
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
@@ -611,8 +612,11 @@ static void draw_everything(int full)
                       (Uint8 *)screen->pixels + strip.y * screen->pitch, screen->pitch);
   SDL_RenderClear(renderer);
   if (cabinet_on)
+  {
+    int playing = current_playing_url[0] != '\0' && !cur_paused;
     cabinet_render(renderer, texture, pressed_key,   /* play latched while playing */
-                   current_playing_url[0] != '\0' && !cur_paused ? 1u << CAB_KEY_PLAY : 0);
+                   playing ? 1u << CAB_KEY_PLAY : 0, playing);
+  }
   else
     SDL_RenderCopy(renderer, texture, NULL, NULL);
   SDL_RenderPresent(renderer);
@@ -662,7 +666,7 @@ static void set_cabinet(int on)
 {
   int w, h;
 
-  if (on && cabinet_init(renderer) != 0) {
+  if (on && cabinet_init(renderer, cabinet_font) != 0) {
     fprintf(stderr, "cannot draw the cabinet\n");
     on = 0;
   }
@@ -1014,6 +1018,7 @@ int main(int argc, char *argv[])
 
   stations_path = find_datafile(stations_arg, STATIONSFILE, stations_buf, sizeof(stations_buf));
   font_path = find_datafile(font_arg, FONTFILE, font_buf, sizeof(font_buf));
+  cabinet_font = font_path;
 
   if (stations_load(stations_path, &stations) != 0)
     return 1;
@@ -1068,8 +1073,6 @@ int main(int argc, char *argv[])
   if (renderer == NULL)
     die("SDL_CreateRenderer");
   SDL_RenderSetLogicalSize(renderer, WIN_WIDTH, WIN_HEIGHT);
-  if (cabinet_on)
-    set_cabinet(1);
   texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, WIN_WIDTH, WIN_HEIGHT);
   screen = SDL_CreateRGBSurfaceWithFormat(0, WIN_WIDTH, WIN_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);
@@ -1088,6 +1091,9 @@ int main(int argc, char *argv[])
     fprintf(stderr, "ERROR: cannot load font %s: %s\n", font_path, TTF_GetError());
     return 1;
   }
+
+  if (cabinet_on)
+    set_cabinet(1);  /* after TTF_Init: the keys have labels */
 
   fprintf(stderr, "started...\n");
   adopt_playing_station();

@@ -125,15 +125,17 @@ already playing that station, it is taken over without re-tuning (no gap).
 
 ## Radio cabinet
 
-Optionally the dial sits in a 1930s style tube radio case: walnut with an arched top,
-Art Deco sunburst, brass trim and Bakelite push buttons (key `g` or `-g`; the choice
-is remembered):
+Optionally the dial sits in a table radio case in the style of around 1950: walnut box
+with rounded top edges, a light veneer frame around a darker front, a figured lower
+panel with small labelled ivory push buttons, a pilot lamp and two Bakelite knobs
+(decoration). Key `g` or `-g`; the choice is remembered:
 
 <img src="cabinet.png" width=50%>
 
-Push buttons below the dial, left to right: volume +, play/pause, volume −,
-scan left, next page, previous page, scan right. Play/pause stays pressed down
-while the radio plays. The mouse wheel tunes.
+Push buttons, left to right: Lauter (volume +), Spiel (play/pause), Leiser (volume −),
+«Suche (scan left), Band+ / Band- (next / previous page), Suche» (scan right).
+"Spiel" stays pressed down and the pilot lamp glows while the radio plays. The mouse
+wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 
 ## Tray icon
 
