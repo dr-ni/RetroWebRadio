@@ -67,6 +67,8 @@
 #define TUNE_DELAY_MS 1000  // station must stay tuned this long before it plays
 #define SCAN_STEP 2         // px per tick while auto-scanning
 #define KEY_STEP 5          // px per cursor key press
+#define KNOB_DELAY_MS 400   // cabinet knob held: repeat after ...
+#define KNOB_REPEAT_MS 50   // ... one step every ...
 #define TRACK_MAX 512
 #define SAVE_DELAY_MS 2000  // save the dial position once it has settled
 
@@ -110,6 +112,9 @@ static int cur_paused = 0;            // mpd reports [paused]
 static const char *cabinet_font;      // fallback font for the key labels
 static const char *cabinet_tex[3];    // veneer photos (NULL: procedural)
 static int pressed_key = -1;          // cabinet key held down with the mouse
+static int knob_dir = 0;              // cabinet knob held: -1 left, +1 right
+static uint64_t knob_next;            // next auto-repeat step
+static int lamp_shown = -1;           // lamp state on screen (for blinking)
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
 static volatile sig_atomic_t window_request = WIN_NONE;
@@ -589,6 +594,9 @@ static void draw_current_track(void)
  * into a background surface and reused. With only the bottom line
  * changing (scrolling), just that strip is copied and uploaded.
  */
+static int lamp_state(void);
+static double eye_opening(void);
+
 static void draw_everything(int full)
 {
   SDL_Rect strip = { 0, TRACK_Y, WIN_WIDTH, WIN_HEIGHT - TRACK_Y };
@@ -615,8 +623,9 @@ static void draw_everything(int full)
   if (cabinet_on)
   {
     int playing = current_playing_url[0] != '\0' && !cur_paused;
+    lamp_shown = lamp_state();
     cabinet_render(renderer, texture, pressed_key,   /* play latched while playing */
-                   playing ? 1u << CAB_KEY_PLAY : 0, playing);
+                   playing ? 1u << CAB_KEY_PLAY : 0, lamp_shown, eye_opening());
   }
   else
     SDL_RenderCopy(renderer, texture, NULL, NULL);
@@ -664,6 +673,36 @@ static void press_key(int key)
 
 static const char *find_datafile(const char *override, const char *name,
                                  char *buf, size_t size);
+
+/* pilot lamp: red when muted, blinking while paused, lit while playing */
+static int lamp_state(void)
+{
+  if (current_playing_url[0] == '\0')
+    return 0;
+  if (cur_volume == 0)
+    return 2;
+  if (cur_paused)
+    return (now_ms() / 500) % 2;
+  return 1;
+}
+
+/* magic eye: 0 = tuner exactly on a station centre .. 1 = far off */
+static double eye_opening(void)
+{
+  const struct page *p = page_now();
+  int i, best = 1 << 30;
+
+  for (i = 0; i < p->count; i++) {
+    int d = abs(station_x(p, i) - tuner_x());
+    if (d < best)
+      best = d;
+  }
+  {
+    /* fully open half way between two stations */
+    double half = p->count > 0 ? ((VISIBLE_WIDTH - 60) / p->count) / 2.0 : 30;
+    return best >= half ? 1.0 : best / half;
+  }
+}
 
 /* switch the radio case on/off */
 static void set_cabinet(int on)
@@ -767,6 +806,14 @@ static int process_events(void)
       if (cabinet_on && event.button.button == SDL_BUTTON_LEFT) {
         int hit = cabinet_hit(event.button.x, event.button.y);
         pressed_key = hit >= CAB_HIT_KEY ? hit - CAB_HIT_KEY : -1;
+        if (hit == CAB_HIT_KNOB_LEFT || hit == CAB_HIT_KNOB_RIGHT) {
+          /* knob = step button: one step now, repeat while held */
+          pressed_key = hit;
+          knob_dir = hit == CAB_HIT_KNOB_LEFT ? -1 : +1;
+          search_dir = 0;
+          move_tuner(knob_dir * KEY_STEP);
+          knob_next = now_ms() + KNOB_DELAY_MS;
+        }
       }
       break;
     case SDL_MOUSEBUTTONUP:
@@ -784,6 +831,7 @@ static int process_events(void)
           press_key(pressed_key);  /* released on the same key */
         }
         pressed_key = -1;
+        knob_dir = 0;
       }
       break;
     case SDL_MOUSEWHEEL: {
@@ -1125,6 +1173,12 @@ int main(int argc, char *argv[])
     running = process_events();
     publish_visibility();
     scan_step();
+    if (knob_dir != 0 && t >= knob_next) {  /* knob held down */
+      move_tuner(knob_dir * KEY_STEP);
+      knob_next = t + KNOB_REPEAT_MS;
+    }
+    if (cabinet_on && lamp_shown >= 0 && lamp_state() != lamp_shown)
+      refresh_now = 1;  /* blinking lamp, mute */
     update_tuning();
     play_current();
     reap_children();

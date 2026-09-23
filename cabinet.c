@@ -5,10 +5,11 @@
  * A post-war table radio in the style of around 1950: box-shaped walnut
  * case with rounded top edges, a wide light veneer frame around a darker
  * front panel holding the dial, a figured lower panel with a row of small
- * ivory push buttons with printed labels, a pilot lamp and two Bakelite
- * knobs (decoration).
+ * ivory push buttons with printed labels, a pilot lamp on the left, a
+ * magic eye tuning indicator on the right and two Bakelite knobs that
+ * work as step buttons (left / right, repeating while held).
  *
- *   [Lauter] [Spiel] [Leiser] [<<Suche] [Band+] [Band-] [Suche>>]
+ *   (knob) (lamp) [Spielen][Lauter][Leiser][<<Suche][Band+][Band-][Suche>>] (eye) (knob)
  *
  * Everything is rendered once with anti-aliased shapes and procedural
  * textures into textures; per frame only textures are copied.
@@ -38,15 +39,24 @@
 #define KEY_GAP     5
 #define PRESS_DY    3
 #define KEYS_Y      (PANEL_Y0 + 34)
-#define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 26)
+#define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 30)
 #define LAMP_Y      (KEYS_Y + KEY_H / 2)
+#define LAMP_R      12
+#define EYE_X       (CAB_W - LAMP_X)
+#define EYE_R       22
+#define EYE_STEPS   24                        /* pre-rendered shadow widths */
 #define KNOB_R      30
 #define KNOB_Y      (RECESS_Y1 - 8)
+#define KNOB_X(k)   ((k) ? RECESS_X1 - 14 : RECESS_X0 + 14)
+#define KNOB_S      (2 * (KNOB_R + 10))       /* knob texture size */
+#define LAMP_S      64
+#define EYE_S       64
 
-static SDL_Texture *cab_tex, *key_tex[CAB_KEYS][2], *lamp_tex[2];
+static SDL_Texture *cab_tex, *key_tex[CAB_KEYS][2], *lamp_tex[3], *knob_tex[2][2];
+static SDL_Texture *eye_tex[EYE_STEPS + 1];
 
 static const char *key_label[CAB_KEYS] = {
-  "Lauter", "Spiel", "Leiser", "\xc2\xabSuche", "Band+", "Band-", "Suche\xc2\xbb"
+  "Spielen", "Lauter", "Leiser", "\xc2\xabSuche", "Band+", "Band-", "Suche\xc2\xbb"
 };
 
 static void blend(SDL_Surface *s, int x, int y, uint32_t rgb, double a)
@@ -273,7 +283,7 @@ static void key_rect(int k, int *x, int *y)
 static SDL_Surface *draw_case(void)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, CAB_W, CAB_H, 32, SDL_PIXELFORMAT_ARGB8888);
-  int x, y, k;
+  int x, y;
 
   if (s == NULL)
     return NULL;
@@ -316,32 +326,16 @@ static SDL_Surface *draw_case(void)
     rrect(s, kx - 6, ky - 6, kx2 + KEY_W + 6, ky + KEY_H + 8, 5, 0x100804, 1.5, 0x3a2412);
   }
 
-  /* lamp socket */
-  rrect(s, LAMP_X - 11, LAMP_Y - 11, LAMP_X + 11, LAMP_Y + 11, 11, 0x1a0d06, 2, 0x6a4a28);
-
-  /* decorative knobs: fluted Bakelite with a shadow */
-  for (k = 0; k < 2; k++) {
-    double cx = k ? RECESS_X1 - 14 : RECESS_X0 + 14, cy = KNOB_Y;
-    for (y = (int)(cy - KNOB_R - 4); y <= cy + KNOB_R + 8; y++)
-      for (x = (int)(cx - KNOB_R - 4); x <= cx + KNOB_R + 4; x++) {
-        double dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = hypot(dx, dy);
-        double ang = atan2(dy, dx), flute = 1.2 * cos(ang * 24);
-        double ds = hypot(dx, dy - 4) - KNOB_R;            /* shadow */
-        blend(s, x, y, 0x000000, (0.5 - ds / 4) * 0.4);
-        {
-          double d = r - (KNOB_R + flute * (r > KNOB_R - 5 ? 1 : 0));
-          double lit = 1.0 - 0.45 * (dy / KNOB_R) - 0.15 * (dx / KNOB_R);
-          double m = fbm(x * 0.12 + k * 9, y * 0.12) - 0.5;
-          double cap = r < KNOB_R - 9 ? 1.15 : 1.0;
-          blend(s, x, y, rgbf((34 + 14 * m) * lit * cap, (18 + 8 * m) * lit * cap,
-                              (10 + 5 * m) * lit * cap), 0.5 - d);
-          if (r < KNOB_R - 9 && r > KNOB_R - 11)          /* cap edge */
-            blend(s, x, y, 0x000000, 0.35);
-        }
-      }
-    /* gloss */
-    rrect(s, cx - 12, cy - 18, cx + 2, cy - 12, 3, 0x9a6a44, 0, 0);
-  }
+  /* lamp socket and the metal ring of the magic eye */
+  rrect(s, LAMP_X - LAMP_R - 4, LAMP_Y - LAMP_R - 4, LAMP_X + LAMP_R + 4, LAMP_Y + LAMP_R + 4,
+        LAMP_R + 4, 0x1a0d06, 2.5, 0x6a4a28);
+  for (y = LAMP_Y - EYE_R - 6; y <= LAMP_Y + EYE_R + 6; y++)
+    for (x = EYE_X - EYE_R - 6; x <= EYE_X + EYE_R + 6; x++) {
+      double r = hypot(x + 0.5 - EYE_X, y + 0.5 - LAMP_Y);
+      double t = 1.15 - 0.5 * (y + 0.5 - LAMP_Y + EYE_R) / (2.0 * EYE_R);
+      if (r < EYE_R + 5)
+        blend(s, x, y, rgbf(150 * t, 140 * t, 120 * t), EYE_R + 5 - r > 1 ? 1 : EYE_R + 5 - r);
+    }
   return s;
 }
 
@@ -383,25 +377,100 @@ static SDL_Surface *draw_key(int k, int down, TTF_Font *font)
   return s;
 }
 
-/* pilot lamp: warm glass, lit or dark */
-static SDL_Surface *draw_lamp(int on)
+/* fluted Bakelite knob with shadow; 'down' = pressed (sunk, darker) */
+static SDL_Surface *draw_knob(int k, int down)
 {
-  SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, 40, 40, 32, SDL_PIXELFORMAT_ARGB8888);
+  SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, KNOB_S, KNOB_S, 32, SDL_PIXELFORMAT_ARGB8888);
+  double c = KNOB_S / 2.0, cy = c - 3 + (down ? 2 : 0), dim = down ? 0.8 : 1.0;
   int x, y;
 
   if (s == NULL)
     return NULL;
   SDL_FillRect(s, NULL, 0);
-  for (y = 0; y < 40; y++)
-    for (x = 0; x < 40; x++) {
-      double r = hypot(x + 0.5 - 20, y + 0.5 - 20);
-      if (on)
-        blend(s, x, y, 0xff9030, 0.35 * exp(-pow(r / 11, 2)));      /* glow */
-      if (r < 8.5) {
-        double c = 1 - r / 9;
-        blend(s, x, y, on ? rgbf(255, 120 + 110 * c, 40 + 120 * c * c)
-                          : rgbf(90 + 30 * c, 30 + 10 * c, 16), 8.5 - r > 1 ? 1 : 8.5 - r);
+  for (y = 0; y < KNOB_S; y++)
+    for (x = 0; x < KNOB_S; x++) {
+      double dx = x + 0.5 - c, dy = y + 0.5 - cy, r = hypot(dx, dy);
+      double ang = atan2(dy, dx), flute = 1.2 * cos(ang * 24);
+      double ds = hypot(dx, dy - (down ? 2 : 4)) - KNOB_R;          /* shadow */
+      double d = r - (KNOB_R + flute * (r > KNOB_R - 5 ? 1 : 0));
+      double lit = (1.0 - 0.45 * (dy / KNOB_R) - 0.15 * (dx / KNOB_R)) * dim;
+      double m = fbm(x * 0.12 + k * 9, y * 0.12) - 0.5;
+      double cap = r < KNOB_R - 9 ? 1.15 : 1.0;
+
+      blend(s, x, y, 0x000000, (0.5 - ds / 4) * (down ? 0.3 : 0.45));
+      blend(s, x, y, rgbf((34 + 14 * m) * lit * cap, (18 + 8 * m) * lit * cap,
+                          (10 + 5 * m) * lit * cap), 0.5 - d);
+      if (r < KNOB_R - 9 && r > KNOB_R - 11)                         /* cap edge */
+        blend(s, x, y, 0x000000, 0.35);
+    }
+  rrect(s, c - 12, cy - 18, c + 2, cy - 12, 3, down ? 0x6a4a30 : 0x9a6a44, 0, 0); /* gloss */
+  return s;
+}
+
+/* pilot lamp glass: 0 dark, 1 warm light, 2 red */
+static SDL_Surface *draw_lamp(int state)
+{
+  SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, LAMP_S, LAMP_S, 32, SDL_PIXELFORMAT_ARGB8888);
+  double c = LAMP_S / 2.0;
+  int x, y;
+
+  if (s == NULL)
+    return NULL;
+  SDL_FillRect(s, NULL, 0);
+  for (y = 0; y < LAMP_S; y++)
+    for (x = 0; x < LAMP_S; x++) {
+      double r = hypot(x + 0.5 - c, y + 0.5 - c), g = 1 - r / (LAMP_R + 0.5);
+      uint32_t col;
+      if (state == 1)
+        blend(s, x, y, 0xff9030, 0.40 * exp(-pow(r / (LAMP_R * 1.5), 2)));   /* glow */
+      else if (state == 2)
+        blend(s, x, y, 0xff2010, 0.40 * exp(-pow(r / (LAMP_R * 1.5), 2)));
+      if (r >= LAMP_R)
+        continue;
+      col = state == 1 ? rgbf(255, 120 + 120 * g, 40 + 140 * g * g)
+          : state == 2 ? rgbf(255, 40 + 150 * g * g, 20 + 110 * g * g)
+          : rgbf(80 + 40 * g, 28 + 14 * g, 14 + 6 * g);
+      blend(s, x, y, col, LAMP_R - r > 1 ? 1 : LAMP_R - r);
+      /* small reflection on the glass */
+      if (hypot(x + 0.5 - (c - 4), y + 0.5 - (c - 4)) < 2.5)
+        blend(s, x, y, 0xffffff, state ? 0.5 : 0.35);
+    }
+  return s;
+}
+
+/*
+ * Magic eye (tuning indicator tube, seen from the front): green
+ * fluorescent ring around a dark cap, with two dark shadow sectors at the
+ * top and bottom. open = 1: detuned, wide sectors; open = 0: tuned in,
+ * the sectors are closed.
+ */
+static SDL_Surface *draw_eye(double open)
+{
+  SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, EYE_S, EYE_S, 32, SDL_PIXELFORMAT_ARGB8888);
+  double c = EYE_S / 2.0, half = 4 + open * 50;   /* half width of a sector, degrees */
+  int x, y;
+
+  if (s == NULL)
+    return NULL;
+  SDL_FillRect(s, NULL, 0);
+  for (y = 0; y < EYE_S; y++)
+    for (x = 0; x < EYE_S; x++) {
+      double dx = x + 0.5 - c, dy = y + 0.5 - c, r = hypot(dx, dy);
+      double deg = fabs(atan2(dx, -dy)) * 180 / M_PI;   /* 0 = up, 180 = down */
+      double off = deg < 90 ? deg : 180 - deg;           /* distance to the axis */
+      double edge, glow, a;
+      if (r > EYE_R)
+        continue;
+      a = EYE_R - r > 1 ? 1 : EYE_R - r;
+      blend(s, x, y, 0x06140a, a);                       /* dark glass */
+      if (r > 7) {
+        edge = (off - half) / 2.5;                       /* soft shadow edge */
+        glow = edge > 1 ? 1 : edge < 0 ? 0 : edge;
+        glow *= 0.55 + 0.45 * (r - 7) / (EYE_R - 7);     /* brighter outside */
+        blend(s, x, y, rgbf(60 + 120 * glow, 255 * glow, 90 + 60 * glow), a * glow);
       }
+      if (r < 7)                                         /* cathode cap */
+        blend(s, x, y, 0x101010, 7 - r > 1 ? 1 : 7 - r);
     }
   return s;
 }
@@ -423,6 +492,19 @@ static TTF_Font *label_font(const char *fallback)
     if ((f = TTF_OpenFont(serif[i], 11)) != NULL)
       return f;
   return fallback ? TTF_OpenFont(fallback, 10) : NULL;
+}
+
+/* surface -> blended texture, frees the surface */
+static SDL_Texture *to_texture(SDL_Renderer *r, SDL_Surface *s)
+{
+  SDL_Texture *t;
+  if (s == NULL)
+    return NULL;
+  t = SDL_CreateTextureFromSurface(r, s);
+  if (t != NULL)
+    SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+  SDL_FreeSurface(s);
+  return t;
 }
 
 int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_path[3])
@@ -456,27 +538,39 @@ int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_p
     }
   if (font != NULL)
     TTF_CloseFont(font);
-  for (d = 0; d < 2; d++) {
-    SDL_Surface *ls = draw_lamp(d);
-    if (ls != NULL) {
-      lamp_tex[d] = SDL_CreateTextureFromSurface(r, ls);
-      SDL_SetTextureBlendMode(lamp_tex[d], SDL_BLENDMODE_BLEND);
-      SDL_FreeSurface(ls);
-    }
-  }
+  for (d = 0; d < 3; d++)
+    lamp_tex[d] = to_texture(r, draw_lamp(d));
+  for (k = 0; k < 2; k++)
+    for (d = 0; d < 2; d++)
+      knob_tex[k][d] = to_texture(r, draw_knob(k, d));
+  for (k = 0; k <= EYE_STEPS; k++)
+    eye_tex[k] = to_texture(r, draw_eye((double)k / EYE_STEPS));
   return cab_tex != NULL ? 0 : -1;
 }
 
-void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned latched, int lamp)
+void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned latched,
+                    int lamp, double eye_open)
 {
   SDL_Rect dst = { CAB_DIAL_X, CAB_DIAL_Y, 644, 428 };
-  SDL_Rect lr = { LAMP_X - 20, LAMP_Y - 20, 40, 40 };
-  int k;
+  SDL_Rect lr = { LAMP_X - LAMP_S / 2, LAMP_Y - LAMP_S / 2, LAMP_S, LAMP_S };
+  SDL_Rect er = { EYE_X - EYE_S / 2, LAMP_Y - EYE_S / 2, EYE_S, EYE_S };
+  int k, e;
 
   SDL_RenderCopy(r, cab_tex, NULL, NULL);
   SDL_RenderCopy(r, dial, NULL, &dst);
-  if (lamp_tex[lamp ? 1 : 0] != NULL)
-    SDL_RenderCopy(r, lamp_tex[lamp ? 1 : 0], NULL, &lr);
+  if (lamp < 0 || lamp > 2)
+    lamp = 0;
+  if (lamp_tex[lamp] != NULL)
+    SDL_RenderCopy(r, lamp_tex[lamp], NULL, &lr);
+  e = (int)lround((eye_open < 0 ? 0 : eye_open > 1 ? 1 : eye_open) * EYE_STEPS);
+  if (eye_tex[e] != NULL)
+    SDL_RenderCopy(r, eye_tex[e], NULL, &er);
+  for (k = 0; k < 2; k++) {
+    SDL_Rect kr = { KNOB_X(k) - KNOB_S / 2, KNOB_Y - KNOB_S / 2 + 3, KNOB_S, KNOB_S };
+    int down = pressed == (k ? CAB_HIT_KNOB_RIGHT : CAB_HIT_KNOB_LEFT);
+    if (knob_tex[k][down] != NULL)
+      SDL_RenderCopy(r, knob_tex[k][down], NULL, &kr);
+  }
   for (k = 0; k < CAB_KEYS; k++) {
     SDL_Rect kr;
     int down = (k == pressed) || (latched & (1u << k));
@@ -499,5 +593,8 @@ int cabinet_hit(int x, int y)
     if (x >= kx && x < kx + KEY_W && y >= ky && y < ky + KEY_H + PRESS_DY)
       return CAB_HIT_KEY + k;
   }
+  for (k = 0; k < 2; k++)
+    if (hypot(x - KNOB_X(k), y - KNOB_Y) <= KNOB_R + 4)
+      return k ? CAB_HIT_KNOB_RIGHT : CAB_HIT_KNOB_LEFT;
   return CAB_HIT_NONE;
 }

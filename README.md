@@ -127,15 +127,18 @@ already playing that station, it is taken over without re-tuning (no gap).
 
 Optionally the dial sits in a table radio case in the style of around 1950: walnut box
 with rounded top edges, a light veneer frame around a darker front, a figured lower
-panel with small labelled ivory push buttons, a pilot lamp and two Bakelite knobs
-(decoration). Key `g` or `-g`; the choice is remembered:
+panel with small labelled ivory push buttons, a pilot lamp, a magic eye and two Bakelite knobs. Key `g` or `-g`; the choice is remembered:
 
 <img src="cabinet.png" width=50%>
 
-Push buttons, left to right: Lauter (volume +), Spiel (play/pause), Leiser (volume −),
+Push buttons, left to right: Spielen (play/pause), Lauter (volume +), Leiser (volume −),
 «Suche (scan left), Band+ / Band- (next / previous page), Suche» (scan right).
-"Spiel" stays pressed down and the pilot lamp glows while the radio plays. The mouse
-wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
+"Spielen" stays pressed down while the radio plays. The knobs at the lower corners are
+step buttons: left knob tunes one step left, right knob one step right, holding repeats.
+
+The pilot lamp (left) glows while playing, blinks while paused and turns red when muted.
+The magic eye (right) closes as the tuner reaches a station and opens between stations.
+The mouse wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 
 The veneer comes from photos of a real radio of that time (`textures/*.bmp`, made with
 `textures/mktextures.py` from the author's own photo); if the files are missing, a
