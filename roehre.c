@@ -103,12 +103,18 @@ static char toast[128];               // short message at the bottom (volume, st
 static uint64_t toast_timeout = 0;
 static int refresh_now = 1;
 static volatile sig_atomic_t stop_requested = 0;
-static volatile sig_atomic_t toggle_requested = 0;
+enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
+static volatile sig_atomic_t window_request = WIN_NONE;
 
-static void on_usr1(int sig)
+/* tray icon: SIGUSR1 show, SIGUSR2 hide, SIGRTMIN toggle */
+static void on_window_signal(int sig)
 {
-  (void)sig;
-  toggle_requested = 1;  /* tray icon: show/hide the window */
+  if (sig == SIGUSR1)
+    window_request = WIN_SHOW;
+  else if (sig == SIGUSR2)
+    window_request = WIN_HIDE;
+  else
+    window_request = WIN_TOGGLE;
 }
 
 static void on_signal(int sig)
@@ -752,12 +758,13 @@ static void adopt_playing_station(void)
   pclose(fp);
 }
 
-/* SIGUSR1 from the tray: hidden or minimized -> show and raise, else hide */
-static void toggle_window(void)
+/* show (and raise), hide, or toggle the window on request of the tray */
+static void handle_window_request(int req)
 {
   Uint32 flags = SDL_GetWindowFlags(window);
+  int hidden = (flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) != 0;
 
-  if (flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) {
+  if (req == WIN_SHOW || (req == WIN_TOGGLE && hidden)) {
     SDL_ShowWindow(window);
     SDL_RestoreWindow(window);
     SDL_RaiseWindow(window);
@@ -850,8 +857,10 @@ int main(int argc, char *argv[])
   sigaction(SIGTERM, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
   sigaction(SIGHUP, &sa, NULL);
-  sa.sa_handler = on_usr1;
+  sa.sa_handler = on_window_signal;
   sigaction(SIGUSR1, &sa, NULL);
+  sigaction(SIGUSR2, &sa, NULL);
+  sigaction(SIGRTMIN, &sa, NULL);
 
   if (delay > 0)
     sleep((unsigned)delay);
@@ -896,9 +905,10 @@ int main(int argc, char *argv[])
 
   while (running && !stop_requested) {
     t = now_ms();
-    if (toggle_requested) {
-      toggle_requested = 0;
-      toggle_window();
+    if (window_request != WIN_NONE) {
+      int req = window_request;
+      window_request = WIN_NONE;
+      handle_window_request(req);
     }
     running = process_events();
     scan_step();

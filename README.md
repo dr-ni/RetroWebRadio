@@ -68,7 +68,7 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 The dial position (page and tuner) is saved in `~/.local/state/retrowebradio/position`
 and restored on the next start, so the radio comes back on the last station. If mpd is
 already playing that station, it is taken over without re-tuning (no gap).
-`SIGUSR1` shows/hides the window (used by the tray icon).
+`SIGUSR1` shows, `SIGUSR2` hides and `SIGRTMIN` toggles the window (used by the tray icon).
 
 ## Tray icon
 
@@ -76,7 +76,7 @@ already playing that station, it is taken over without re-tuning (no gap).
 For panels that only show AppIndicators (e.g. GNOME with the AppIndicator extension)
 start it with `RETROWEBRADIO_TRAY=indicator`.
 
-- left click: menu with current title, show/hide radio, play/pause, louder, quieter, mute, quit
+- left click: menu with show radio, hide radio, play/pause, louder, quieter, mute, quit
 - right click: show/hide the radio window (starts `roehre` if needed; hiding keeps it
   running, so playback continues without a gap)
 - middle click: mute on/off, scroll wheel: volume

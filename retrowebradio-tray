@@ -2,8 +2,8 @@
 """
 RetroWebRadio tray icon (panel indicator, like Onboard's).
 
-Left click:         menu (current title, show/hide radio, play/pause,
-                    louder, quieter, mute, quit)
+Left click:         menu (show radio, hide radio, play/pause, louder,
+                    quieter, mute, quit); the title is in the tooltip
 Right click:        show/hide the radio window (roehre)
 Middle click:       mute on/off
 Scroll wheel:       volume up/down
@@ -51,7 +51,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 TEXTS = {
     "de": {
-        "Show radio": "Radio anzeigen", "Show/hide radio": "Radio ein-/ausblenden",
+        "Show radio": "Radio anzeigen", "Hide radio": "Radio verbergen",
         "Play": "Abspielen", "Pause": "Pause",
         "Louder": "Lauter", "Quieter": "Leiser", "Mute": "Stumm",
         "Quit": "Beenden",
@@ -153,14 +153,14 @@ class Tray:
     # -------------------------------------------------------------- menu
     def build_menu(self):
         m = Gtk.Menu()
-        self.item_title = Gtk.MenuItem(label="–")
-        self.item_title.set_sensitive(False)
-        m.append(self.item_title)
-        m.append(Gtk.SeparatorMenuItem())
+        self.item_show = Gtk.MenuItem(label=_("Show radio"))
+        self.item_show.connect("activate", lambda *_a: self.show_gui())
+        m.append(self.item_show)
 
-        self.item_gui = Gtk.MenuItem(label=_("Show radio"))
-        self.item_gui.connect("activate", lambda *_a: self.toggle_gui())
-        m.append(self.item_gui)
+        self.item_hide = Gtk.MenuItem(label=_("Hide radio"))
+        self.item_hide.connect("activate", lambda *_a: self.signal_gui(signal.SIGUSR2))
+        m.append(self.item_hide)
+        m.append(Gtk.SeparatorMenuItem())
 
         self.item_play = Gtk.MenuItem(label=_("Play"))
         self.item_play.connect("activate", lambda *_a: self.after(mpc("toggle")))
@@ -219,11 +219,11 @@ class Tray:
             tip += "\n" + self.title
 
         self.updating = True
-        self.item_title.set_label(self.title or state)
         self.item_play.set_label(_("Pause") if self.playing else _("Play"))
         self.item_mute.set_active(muted)
-        self.item_gui.set_label(_("Show/hide radio") if self.gui_running() else _("Show radio"))
-        self.item_gui.set_sensitive(self.gui_running() or find_roehre() is not None)
+        running = self.gui_running()
+        self.item_show.set_sensitive(running or find_roehre() is not None)
+        self.item_hide.set_sensitive(running)
         self.updating = False
 
         if self.ind is not None:
@@ -299,17 +299,35 @@ class Tray:
         return subprocess.run(["pgrep", "-x", "roehre"],
                               stdout=subprocess.DEVNULL).returncode == 0
 
+    def signal_gui(self, sig):
+        """Show (SIGUSR1), hide (SIGUSR2) or toggle (SIGRTMIN) the window.
+        roehre keeps running, so playback continues without a gap."""
+        out = subprocess.run(["pgrep", "-x", "roehre"], capture_output=True, text=True).stdout
+        for pid in out.split():
+            try:
+                os.kill(int(pid), sig)
+            except (OSError, ValueError):
+                pass
+
+    def start_gui(self):
+        exe = find_roehre()
+        if exe:
+            self.roehre = subprocess.Popen(
+                [exe, "-d", "0"], cwd=os.path.dirname(exe),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        GLib.timeout_add(300, lambda: self.update_widgets() and False)
+
+    def show_gui(self):
+        if self.gui_running():
+            self.signal_gui(signal.SIGUSR1)
+        else:
+            self.start_gui()
+
     def toggle_gui(self):
         if self.gui_running():
-            # show/hide the window; roehre keeps running, playback continues
-            subprocess.run(["pkill", "-USR1", "-x", "roehre"])
+            self.signal_gui(signal.SIGRTMIN)
         else:
-            exe = find_roehre()
-            if exe:
-                self.roehre = subprocess.Popen(
-                    [exe, "-d", "0"], cwd=os.path.dirname(exe),
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        GLib.timeout_add(300, lambda: self.update_widgets() and False)
+            self.start_gui()
 
     def check_gui(self):
         if self.roehre is not None and self.roehre.poll() is not None:
