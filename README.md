@@ -76,7 +76,8 @@ already playing that station, it is taken over without re-tuning (no gap).
 For panels that only show AppIndicators (e.g. GNOME with the AppIndicator extension)
 start it with `RETROWEBRADIO_TRAY=indicator`.
 
-- left click: menu with show radio, hide radio, play/pause, louder, quieter, mute, quit
+- left click: menu with "show radio" or "hide radio" (depending on the window state),
+  play/pause, louder, quieter, mute, quit
 - right click: show/hide the radio window (starts `roehre` if needed; hiding keeps it
   running, so playback continues without a gap)
 - middle click: mute on/off, scroll wheel: volume

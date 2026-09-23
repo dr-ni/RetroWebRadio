@@ -758,6 +758,40 @@ static void adopt_playing_station(void)
   pclose(fp);
 }
 
+/*
+ * Publish whether the window is visible, so the tray can offer "show" or
+ * "hide": $XDG_RUNTIME_DIR/retrowebradio-visible contains 1 or 0 and is
+ * removed on exit. Written only when the state changes.
+ */
+static char visible_file[PATH_MAX + 32];
+static int published_visible = -1;
+
+static void init_visible_file(void)
+{
+  const char *dir = getenv("XDG_RUNTIME_DIR");
+
+  if (dir != NULL && dir[0] == '/')
+    snprintf(visible_file, sizeof(visible_file), "%s/retrowebradio-visible", dir);
+  else
+    snprintf(visible_file, sizeof(visible_file), "/tmp/retrowebradio-%u-visible",
+             (unsigned)getuid());
+}
+
+static void publish_visibility(void)
+{
+  Uint32 flags = SDL_GetWindowFlags(window);
+  int visible = !(flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED));
+  FILE *fp;
+
+  if (visible == published_visible || visible_file[0] == '\0')
+    return;
+  if ((fp = fopen(visible_file, "w")) != NULL) {
+    fprintf(fp, "%d\n", visible);
+    fclose(fp);
+    published_visible = visible;
+  }
+}
+
 /* show (and raise), hide, or toggle the window on request of the tray */
 static void handle_window_request(int req)
 {
@@ -902,6 +936,7 @@ int main(int argc, char *argv[])
 
   fprintf(stderr, "started...\n");
   adopt_playing_station();
+  init_visible_file();
 
   while (running && !stop_requested) {
     t = now_ms();
@@ -911,6 +946,7 @@ int main(int argc, char *argv[])
       handle_window_request(req);
     }
     running = process_events();
+    publish_visibility();
     scan_step();
     update_tuning();
     play_current();
@@ -947,6 +983,8 @@ int main(int argc, char *argv[])
   }
 
   save_position();
+  if (visible_file[0] != '\0')
+    unlink(visible_file);
 
   if (tune_pid > 0)
     waitpid(tune_pid, NULL, 0);  /* let a pending tuning finish */
