@@ -95,6 +95,13 @@ static char toast[128];               // short message at the bottom (volume, st
 static uint64_t toast_timeout = 0;
 static int refresh_now = 1;
 static volatile sig_atomic_t stop_requested = 0;
+static volatile sig_atomic_t toggle_requested = 0;
+
+static void on_usr1(int sig)
+{
+  (void)sig;
+  toggle_requested = 1;  /* tray icon: show/hide the window */
+}
 
 static void on_signal(int sig)
 {
@@ -711,6 +718,43 @@ static void save_position(void)
   }
 }
 
+/*
+ * On start, if mpd already plays the station under the (restored) tuner,
+ * take it over instead of tuning it again, which would cause a gap.
+ */
+static void adopt_playing_station(void)
+{
+  char line[STATION_URL_MAX];
+  FILE *fp;
+
+  update_tuning();
+  if (tuned == NULL || (fp = popen("mpc current -f %file% 2>/dev/null", "r")) == NULL)
+    return;
+  if (fgets(line, sizeof(line), fp) != NULL) {
+    chomp(line);
+    if (strcmp(line, tuned->url) == 0) {
+      snprintf(current_playing_url, sizeof(current_playing_url), "%s", line);
+      fprintf(stderr, "already playing: %s\n", line);
+    }
+  }
+  pclose(fp);
+}
+
+/* SIGUSR1 from the tray: hidden or minimized -> show and raise, else hide */
+static void toggle_window(void)
+{
+  Uint32 flags = SDL_GetWindowFlags(window);
+
+  if (flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) {
+    SDL_ShowWindow(window);
+    SDL_RestoreWindow(window);
+    SDL_RaiseWindow(window);
+    refresh_now = 1;
+  } else {
+    SDL_HideWindow(window);
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* setup                                                               */
 /* ------------------------------------------------------------------ */
@@ -793,6 +837,8 @@ int main(int argc, char *argv[])
   sigaction(SIGTERM, &sa, NULL);
   sigaction(SIGINT, &sa, NULL);
   sigaction(SIGHUP, &sa, NULL);
+  sa.sa_handler = on_usr1;
+  sigaction(SIGUSR1, &sa, NULL);
 
   if (delay > 0)
     sleep((unsigned)delay);
@@ -829,8 +875,14 @@ int main(int argc, char *argv[])
   }
 
   fprintf(stderr, "started...\n");
+  adopt_playing_station();
+
   while (running && !stop_requested) {
     t = now_ms();
+    if (toggle_requested) {
+      toggle_requested = 0;
+      toggle_window();
+    }
     running = process_events();
     scan_step();
     update_tuning();

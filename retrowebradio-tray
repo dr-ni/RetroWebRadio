@@ -49,7 +49,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 TEXTS = {
     "de": {
-        "Show radio": "Radio anzeigen", "Hide radio": "Radio ausblenden",
+        "Show radio": "Radio anzeigen", "Show/hide radio": "Radio ein-/ausblenden",
         "Play": "Abspielen", "Pause": "Pause",
         "Louder": "Lauter", "Quieter": "Leiser", "Mute": "Stumm",
         "Quit": "Beenden",
@@ -213,7 +213,7 @@ class Tray:
         self.item_title.set_label(self.title or state)
         self.item_play.set_label(_("Pause") if self.playing else _("Play"))
         self.item_mute.set_active(muted)
-        self.item_gui.set_label(_("Hide radio") if self.gui_running() else _("Show radio"))
+        self.item_gui.set_label(_("Show/hide radio") if self.gui_running() else _("Show radio"))
         self.item_gui.set_sensitive(self.gui_running() or find_roehre() is not None)
         self.updating = False
 
@@ -291,10 +291,8 @@ class Tray:
 
     def toggle_gui(self):
         if self.gui_running():
-            if self.roehre is not None and self.roehre.poll() is None:
-                self.roehre.terminate()
-            else:
-                subprocess.run(["pkill", "-x", "roehre"])
+            # show/hide the window; roehre keeps running, playback continues
+            subprocess.run(["pkill", "-USR1", "-x", "roehre"])
         else:
             exe = find_roehre()
             if exe:
