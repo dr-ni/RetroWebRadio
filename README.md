@@ -78,6 +78,15 @@ system-wide copy, so every user can keep an own station list.
 
 The window itself always carries the radio icon and the window class `retrowebradio`.
 
+## Tuning static
+
+Like a real receiver, roehre plays static between stations and mixes some static into the
+music while the tuner is close to but not exactly on a station; exactly tuned (e.g. after a
+scan) it is silent. The static follows the mpd volume and is off while muted or paused.
+It is played through SDL's default audio output (PipeWire/PulseAudio). If mpd uses an ALSA
+hardware device exclusively, SDL may not get the device; roehre then just runs without
+static. `-N` or the `n` key switches it off.
+
 ## Stations
 
 Edit `stationslist.txt`, one station per line:
@@ -100,6 +109,7 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 |--------|---------|
 | `-f` | fullscreen, scaled to the display with the aspect ratio kept |
 | `-g` / `-G` | with / without the radio cabinet (default: as last time) |
+| `-N` | no static between stations |
 | `-s` | station list; default: next to the binary, `./`, `~/.config/retrowebradio/`, `PREFIX/share/retrowebradio` |
 | `-F` | TrueType font, searched like `-s` (default `VeraMono.ttf`) |
 | `-d` | startup delay in seconds (default 2, avoids starting behind the taskbar at boot) |
@@ -114,6 +124,7 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | m, mute key | mute / unmute (restores the previous volume) |
 | p, space, play key | play / pause |
 | g | radio cabinet on/off |
+| n | tuning static on/off |
 | mouse wheel | tune |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
@@ -136,7 +147,7 @@ Push buttons, left to right: Spielen (play/pause), Lauter (volume +), Leiser (vo
 "Spielen" stays pressed down while the radio plays. The knobs at the lower corners are
 step buttons: left knob tunes one step left, right knob one step right, holding repeats.
 
-The pilot lamp (left) glows while playing, blinks while paused and turns red when muted.
+The pilot lamp (left) glows while a station plays and turns red when muted.
 The magic eye (right) closes as the tuner reaches a station and opens between stations.
 The mouse wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 

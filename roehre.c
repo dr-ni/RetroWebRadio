@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -45,6 +46,7 @@
 #include "stations.h"
 #include "radio_icon.h"
 #include "cabinet.h"
+#include "noise.h"
 
 #define STATSPERCOL 10      // maximal stations per column
 #define WIN_WIDTH 644       // width of screen, 644/14=46 grid
@@ -67,6 +69,7 @@
 #define TUNE_DELAY_MS 1000  // station must stay tuned this long before it plays
 #define SCAN_STEP 2         // px per tick while auto-scanning
 #define KEY_STEP 5          // px per cursor key press
+#define NOISE_LEVEL 0.35    // static at full volume when fully detuned
 #define KNOB_DELAY_MS 400   // cabinet knob held: repeat after ...
 #define KNOB_REPEAT_MS 50   // ... one step every ...
 #define TRACK_MAX 512
@@ -114,7 +117,8 @@ static const char *cabinet_tex[3];    // veneer photos (NULL: procedural)
 static int pressed_key = -1;          // cabinet key held down with the mouse
 static int knob_dir = 0;              // cabinet knob held: -1 left, +1 right
 static uint64_t knob_next;            // next auto-repeat step
-static int lamp_shown = -1;           // lamp state on screen (for blinking)
+static int lamp_shown = -1;           // lamp state on screen
+static int noise_on = 1;              // tuning static (-N or key n: off)
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
 static volatile sig_atomic_t window_request = WIN_NONE;
@@ -674,20 +678,16 @@ static void press_key(int key)
 static const char *find_datafile(const char *override, const char *name,
                                  char *buf, size_t size);
 
-/* pilot lamp: red when muted, blinking while paused, lit while playing */
+/* pilot lamp: red when muted, lit while a station plays */
 static int lamp_state(void)
 {
   if (current_playing_url[0] == '\0')
     return 0;
-  if (cur_volume == 0)
-    return 2;
-  if (cur_paused)
-    return (now_ms() / 500) % 2;
-  return 1;
+  return cur_volume == 0 ? 2 : 1;
 }
 
-/* magic eye: 0 = tuner exactly on a station centre .. 1 = far off */
-static double eye_opening(void)
+/* distance in px from the tuner to the nearest station centre */
+static int station_distance(void)
 {
   const struct page *p = page_now();
   int i, best = 1 << 30;
@@ -697,6 +697,38 @@ static double eye_opening(void)
     if (d < best)
       best = d;
   }
+  return best;
+}
+
+/*
+ * Static: full between stations, some over the music while the tuner is
+ * near but not on a station centre, none when exactly tuned. Follows the
+ * mpd volume, silent when muted or paused.
+ */
+static void update_noise(void)
+{
+  double vol = cur_volume >= 0 ? cur_volume / 100.0 : 0.5, det;
+  int d;
+
+  if (!noise_on)
+    return;
+  if (cur_paused || vol <= 0) {
+    noise_set(0);
+    return;
+  }
+  d = station_distance();
+  if (tuned == NULL)
+    det = 1.0;                                             /* no station */
+  else
+    det = 0.7 * pow((double)d / HIGHLIGHT_XWINDOW, 1.5);  /* badly tuned */
+  noise_set(det * NOISE_LEVEL * vol);
+}
+
+/* magic eye: 0 = tuner exactly on a station centre .. 1 = far off */
+static double eye_opening(void)
+{
+  const struct page *p = page_now();
+  int best = station_distance();
   {
     /* fully open half way between two stations */
     double half = p->count > 0 ? ((VISIBLE_WIDTH - 60) / p->count) / 2.0 : 30;
@@ -783,6 +815,12 @@ static int process_events(void)
         break;
       case SDLK_g:
         set_cabinet(!cabinet_on);
+        break;
+      case SDLK_n:
+        noise_on = !noise_on;
+        if (!noise_on)
+          noise_set(0);
+        show_toast(noise_on ? "Noise on" : "Noise off", 800);
         break;
       case SDLK_p:
       case SDLK_SPACE:
@@ -1044,6 +1082,7 @@ static void usage(const char *prog)
           "usage: %s [-f] [-s stations.xml] [-F font.ttf] [-d seconds]\n"
           "  -f  fullscreen (scaled, aspect ratio kept)\n"
           "  -g  show the radio cabinet around the dial, -G without\n"
+          "  -N  no static between stations (toggle with the n key)\n"
           "      (default: as last time; toggle with the g key)\n"
           "  -s  station list (default: next to the binary, ./,\n"
           "      ~/.config/retrowebradio/, " DATADIR ")\n"
@@ -1068,11 +1107,12 @@ int main(int argc, char *argv[])
   int scrolling, presented;
   struct sigaction sa;
 
-  while ((opt = getopt(argc, argv, "fgGs:F:d:h")) != -1) {
+  while ((opt = getopt(argc, argv, "fgGNs:F:d:h")) != -1) {
     switch (opt) {
     case 'f': fullscreen = 1; break;
     case 'g': force_cabinet = 1; break;
     case 'G': force_cabinet = 0; break;
+    case 'N': noise_on = 0; break;
     case 's': stations_arg = optarg; break;
     case 'F': font_arg = optarg; break;
     case 'd': delay = atoi(optarg); break;
@@ -1158,6 +1198,10 @@ int main(int argc, char *argv[])
 
   if (cabinet_on)
     set_cabinet(1);  /* after TTF_Init: the keys have labels */
+  if (noise_on && noise_init() != 0) {
+    fprintf(stderr, "no audio output for the tuning noise: %s\n", SDL_GetError());
+    noise_on = 0;
+  }
 
   fprintf(stderr, "started...\n");
   adopt_playing_station();
@@ -1178,7 +1222,8 @@ int main(int argc, char *argv[])
       knob_next = t + KNOB_REPEAT_MS;
     }
     if (cabinet_on && lamp_shown >= 0 && lamp_state() != lamp_shown)
-      refresh_now = 1;  /* blinking lamp, mute */
+      refresh_now = 1;  /* lamp: playing, mute */
+    update_noise();
     update_tuning();
     play_current();
     reap_children();
@@ -1219,6 +1264,7 @@ int main(int argc, char *argv[])
 
   if (tune_pid > 0)
     waitpid(tune_pid, NULL, 0);  /* let a pending tuning finish */
+  noise_close();
   stations_free(&stations);
   TTF_Quit();
   SDL_Quit();
