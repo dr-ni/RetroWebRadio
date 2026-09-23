@@ -108,6 +108,7 @@ static int cabinet_on = 0;            // draw the radio case around the dial
 static int cur_volume = -1;           // last known mpd volume, -1 unknown
 static int cur_paused = 0;            // mpd reports [paused]
 static const char *cabinet_font;      // fallback font for the key labels
+static const char *cabinet_tex[3];    // veneer photos (NULL: procedural)
 static int pressed_key = -1;          // cabinet key held down with the mouse
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
@@ -661,12 +662,27 @@ static void press_key(int key)
   refresh_now = 1;
 }
 
+static const char *find_datafile(const char *override, const char *name,
+                                 char *buf, size_t size);
+
 /* switch the radio case on/off */
 static void set_cabinet(int on)
 {
   int w, h;
 
-  if (on && cabinet_init(renderer, cabinet_font) != 0) {
+  if (on && cabinet_tex[0] == NULL) {  /* locate the veneer photos once */
+    static const char *names[3] = {
+      "textures/frame.bmp", "textures/front.bmp", "textures/panel.bmp"
+    };
+    static char bufs[3][PATH_MAX + 32];
+    int i;
+    for (i = 0; i < 3; i++) {
+      cabinet_tex[i] = find_datafile(NULL, names[i], bufs[i], sizeof(bufs[i]));
+      if (access(cabinet_tex[i], R_OK) != 0)
+        cabinet_tex[i] = NULL;
+    }
+  }
+  if (on && cabinet_init(renderer, cabinet_font, cabinet_tex) != 0) {
     fprintf(stderr, "cannot draw the cabinet\n");
     on = 0;
   }

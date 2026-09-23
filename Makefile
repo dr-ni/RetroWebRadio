@@ -45,6 +45,8 @@ install: roehre stations.xml
 	install -m 755 roehre retrowebradio-tray $(DESTDIR)$(PREFIX)/bin/
 	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(DATADIR)/
 	install -m 644 icons/*.svg $(DESTDIR)$(DATADIR)/icons/
+	install -d $(DESTDIR)$(DATADIR)/textures
+	install -m 644 textures/*.bmp $(DESTDIR)$(DATADIR)/textures/
 	install -m 644 icons/retrowebradio.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/
 	sed 's|@BINDIR@|$(PREFIX)/bin|g' retrowebradio.desktop.in \
 	    > $(DESTDIR)$(PREFIX)/share/applications/retrowebradio.desktop
@@ -67,6 +69,8 @@ install-pi: roehre stations.xml
 	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(RADIO_DIR)/
 	install -d $(DESTDIR)$(RADIO_DIR)/icons
 	install -m 644 icons/*.svg $(DESTDIR)$(RADIO_DIR)/icons/
+	install -d $(DESTDIR)$(RADIO_DIR)/textures
+	install -m 644 textures/*.bmp $(DESTDIR)$(RADIO_DIR)/textures/
 
 # menu entry + icon for the current user, so the window list / taskbar
 # shows the radio icon (matched via StartupWMClass=retrowebradio)

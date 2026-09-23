@@ -23,8 +23,10 @@ enum {
 /* cabinet_hit results; a key returns CAB_HIT_KEY + CAB_KEY_... */
 enum { CAB_HIT_NONE = -2, CAB_HIT_DIAL = -1, CAB_HIT_KEY = 0 };
 
-/* build the textures once (font_path: fallback for the key labels); 0 on success */
-int cabinet_init(SDL_Renderer *r, const char *font_path);
+/* build the textures once; font_path: fallback for the key labels,
+   tex_path: veneer photos for frame, front panel, lower panel (each may be
+   NULL or missing, then a procedural veneer is drawn); 0 on success */
+int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_path[3]);
 
 /* case, dial texture, keys and pilot lamp; 'pressed' key (or -1) and
    'latched' keys (bit mask, e.g. play while playing) are drawn pressed down */

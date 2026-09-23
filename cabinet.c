@@ -17,6 +17,8 @@
  */
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <SDL_ttf.h>
 #include "cabinet.h"
 
@@ -133,6 +135,69 @@ static void rrect(SDL_Surface *s, double x0, double y0, double x1, double y1, do
 
 
 
+/*
+ * Veneer photographed on a real radio (the BMPs in textures/, see
+ * textures/mktextures.py). Sampled with mirrored repetition, which also
+ * gives the book-matched look. If a file is missing, the procedural
+ * veneer below is used for that part.
+ */
+struct photo_tex {
+  int w, h;
+  uint32_t *px;   /* ARGB8888 */
+};
+static struct photo_tex photo[3];
+#define TEX_SCALE 0.7   /* texels per logical pixel */
+
+static void load_photo_tex(int tone, const char *path)
+{
+  SDL_Surface *raw, *conv;
+  int y;
+
+  if (path == NULL || (raw = SDL_LoadBMP(path)) == NULL)
+    return;
+  conv = SDL_ConvertSurfaceFormat(raw, SDL_PIXELFORMAT_ARGB8888, 0);
+  SDL_FreeSurface(raw);
+  if (conv == NULL)
+    return;
+  photo[tone].px = malloc((size_t)conv->w * conv->h * 4);
+  if (photo[tone].px != NULL) {
+    photo[tone].w = conv->w;
+    photo[tone].h = conv->h;
+    for (y = 0; y < conv->h; y++)
+      memcpy(photo[tone].px + (size_t)y * conv->w,
+             (uint8_t *)conv->pixels + y * conv->pitch, (size_t)conv->w * 4);
+  }
+  SDL_FreeSurface(conv);
+}
+
+static double mirror(double u, int n)
+{
+  double m = fmod(u, 2.0 * (n - 1));
+  if (m < 0)
+    m += 2.0 * (n - 1);
+  return m > n - 1 ? 2.0 * (n - 1) - m : m;
+}
+
+/* bilinear, mirrored repeat */
+static uint32_t photo_sample(const struct photo_tex *t, double u, double v)
+{
+  double x = mirror(u, t->w), y = mirror(v, t->h), fx, fy, c[3] = { 0, 0, 0 };
+  int x0 = (int)x, y0 = (int)y, x1, y1, i, j, sh;
+
+  x1 = x0 + 1 < t->w ? x0 + 1 : x0;
+  y1 = y0 + 1 < t->h ? y0 + 1 : y0;
+  fx = x - x0;
+  fy = y - y0;
+  for (j = 0; j < 2; j++)
+    for (i = 0; i < 2; i++) {
+      uint32_t p = t->px[(j ? y1 : y0) * t->w + (i ? x1 : x0)];
+      double wgt = (i ? fx : 1 - fx) * (j ? fy : 1 - fy);
+      for (sh = 0; sh < 3; sh++)
+        c[sh] += wgt * ((p >> (16 - 8 * sh)) & 0xff);
+    }
+  return rgbf(c[0], c[1], c[2]);
+}
+
 /* rounded rect with separate top / bottom corner radius */
 static double sd_box(double px, double py, double x0, double y0, double x1, double y1,
                      double rtop, double rbot)
@@ -150,6 +215,10 @@ static uint32_t veneer(double px, double py, int tone)
   static const double base[3][3] = {
     { 120, 70, 34 }, { 66, 34, 16 }, { 92, 50, 24 }
   };
+
+  if (photo[tone].px != NULL)  /* real veneer; book-matched at the centre */
+    return photo_sample(&photo[tone], mx * TEX_SCALE,
+                        (tone == 2 ? py - PANEL_Y0 : py) * TEX_SCALE);
 
   if (tone == 2) {  /* flame figure rising from the centre */
     warp = fbm(mx * 0.02, py * 0.02) - 0.5;
@@ -356,7 +425,7 @@ static TTF_Font *label_font(const char *fallback)
   return fallback ? TTF_OpenFont(fallback, 10) : NULL;
 }
 
-int cabinet_init(SDL_Renderer *r, const char *font_path)
+int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_path[3])
 {
   SDL_Surface *s;
   TTF_Font *font;
@@ -364,10 +433,16 @@ int cabinet_init(SDL_Renderer *r, const char *font_path)
 
   if (cab_tex != NULL)
     return 0;
+  for (k = 0; k < 3 && tex_path != NULL; k++)
+    load_photo_tex(k, tex_path[k]);
   if ((s = draw_case()) == NULL)
     return -1;
   cab_tex = SDL_CreateTextureFromSurface(r, s);
   SDL_FreeSurface(s);
+  for (k = 0; k < 3; k++) {  /* only needed while drawing the case */
+    free(photo[k].px);
+    photo[k].px = NULL;
+  }
 
   font = label_font(font_path);
   for (k = 0; k < CAB_KEYS; k++)

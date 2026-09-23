@@ -137,6 +137,10 @@ Push buttons, left to right: Lauter (volume +), Spiel (play/pause), Leiser (volu
 "Spiel" stays pressed down and the pilot lamp glows while the radio plays. The mouse
 wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 
+The veneer comes from photos of a real radio of that time (`textures/*.bmp`, made with
+`textures/mktextures.py` from the author's own photo); if the files are missing, a
+procedural walnut is drawn instead.
+
 ## Tray icon
 
 `retrowebradio-tray` puts a radio icon into the panel's system tray (Gtk.StatusIcon).
