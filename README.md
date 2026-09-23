@@ -29,6 +29,15 @@ make install         # optional: copies roehre, font and stations.xml to RADIO_D
                      # (default /home/radio/radio; make install RADIO_DIR=...)
 ```
 
+For a menu entry and the radio icon in the taskbar / window list of the current user:
+
+```sh
+make install-desktop                 # launcher runs roehre from this directory
+make install-desktop BINDIR=/home/radio/radio   # or from an install directory
+```
+
+The window itself always carries the radio icon and the window class `retrowebradio`.
+
 ## Stations
 
 Edit `stationslist.txt`, one station per line:

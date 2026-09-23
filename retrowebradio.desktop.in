@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=RetroWebRadio
+GenericName=Web Radio
+GenericName[de]=Webradio
+Comment=Web radio with the dial of an old tube radio (mpd)
+Comment[de]=Webradio mit der Skala eines alten Röhrenradios (mpd)
+Exec=@BINDIR@/roehre -d 0
+Path=@BINDIR@
+Icon=retrowebradio
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=retrowebradio

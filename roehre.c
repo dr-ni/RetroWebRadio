@@ -43,6 +43,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include "stations.h"
+#include "radio_icon.h"
 
 #define STATSPERCOL 10      // maximal stations per column
 #define WIN_WIDTH 644       // width of screen, 644/14=46 grid
@@ -902,6 +903,11 @@ int main(int argc, char *argv[])
     return 0;
   fprintf(stderr, "initializing...\n");
 
+  /* window class / app id, matches StartupWMClass in retrowebradio.desktop,
+     so panels and window lists show the radio icon and group the window */
+  setenv("SDL_VIDEO_X11_WMCLASS", "retrowebradio", 0);
+  setenv("SDL_VIDEO_WAYLAND_WMCLASS", "retrowebradio", 0);
+
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
     die("SDL_Init");
   window = SDL_CreateWindow("RetroWebRadio", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -909,6 +915,15 @@ int main(int argc, char *argv[])
                             fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   if (window == NULL)
     die("SDL_CreateWindow");
+  {
+    SDL_Surface *icon = SDL_CreateRGBSurfaceWithFormatFrom(
+        (void *)radio_icon_rgba, RADIO_ICON_W, RADIO_ICON_H, 32,
+        RADIO_ICON_W * 4, SDL_PIXELFORMAT_RGBA32);
+    if (icon != NULL) {
+      SDL_SetWindowIcon(window, icon);  /* title bar, taskbar, alt-tab */
+      SDL_FreeSurface(icon);
+    }
+  }
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
   if (renderer == NULL)
     renderer = SDL_CreateRenderer(window, -1, 0);

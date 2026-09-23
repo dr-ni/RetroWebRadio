@@ -18,7 +18,7 @@ all: roehre stations.xml
 roehre: roehre.o stations.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-roehre.o: roehre.c stations.h
+roehre.o: roehre.c stations.h radio_icon.h
 stations.o: stations.c stations.h
 
 stations.xml: stationslist.txt stationslist2xml.sh
@@ -32,7 +32,22 @@ install: roehre stations.xml
 	install -d $(DESTDIR)$(RADIO_DIR)/icons
 	install -m 644 icons/*.svg $(DESTDIR)$(RADIO_DIR)/icons/
 
+# menu entry + icon for the current user, so the window list / taskbar
+# shows the radio icon (matched via StartupWMClass=retrowebradio)
+USER_PREFIX ?= $(HOME)/.local
+BINDIR      ?= $(CURDIR)
+
+install-desktop:
+	install -d $(USER_PREFIX)/share/applications $(USER_PREFIX)/share/icons/hicolor/scalable/apps
+	install -m 644 icons/retrowebradio.svg $(USER_PREFIX)/share/icons/hicolor/scalable/apps/
+	sed 's|@BINDIR@|$(BINDIR)|g' retrowebradio.desktop.in > $(USER_PREFIX)/share/applications/retrowebradio.desktop
+	-update-desktop-database -q $(USER_PREFIX)/share/applications 2>/dev/null
+
+uninstall-desktop:
+	rm -f $(USER_PREFIX)/share/applications/retrowebradio.desktop \
+	      $(USER_PREFIX)/share/icons/hicolor/scalable/apps/retrowebradio.svg
+
 clean:
 	rm -f roehre *.o stations.xml.tmp
 
-.PHONY: all install clean
+.PHONY: all install install-desktop uninstall-desktop clean
