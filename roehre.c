@@ -56,7 +56,11 @@
 
 #define TICK_MS 20          // main loop period
 #define IDLE_REDRAW_MS 500  // redraw at least this often
-#define SCROLL_MS 150       // marquee: one character per SCROLL_MS
+#define FRAME_MS 16         // frame period while the title scrolls
+#define SCROLL_SPEED 45     // title scrolling in px per second
+#define SCROLL_GAP 60       // px between end and restart of a scrolling title
+#define SCROLL_PAUSE_MS 1500 // show the start of a new title before scrolling
+#define TRACK_Y (VISIBLE_HEIGHT - 20 + OFFSET_Y)
 #define TRACK_POLL_MS 1000  // ask mpc for the current title
 #define TUNE_DELAY_MS 1000  // station must stay tuned this long before it plays
 #define SCAN_STEP 2         // px per tick while auto-scanning
@@ -90,7 +94,11 @@ static char current_playing_url[STATION_URL_MAX];
 static pid_t tune_pid = 0;            // child running the mpc sequence
 
 static char current_track[TRACK_MAX];
-static size_t textflow = 0;           // marquee offset in characters
+static SDL_Surface *background;       // grid, stations, tuner (cached)
+static SDL_Surface *target;           // surface the draw_* helpers paint on
+static SDL_Surface *track_surf;       // rendered bottom line (cached)
+static char track_text[TRACK_MAX];    // text of track_surf
+static uint64_t scroll_start;
 static char toast[128];               // short message at the bottom (volume, station)
 static uint64_t toast_timeout = 0;
 static int refresh_now = 1;
@@ -383,7 +391,6 @@ static void play_current(void)
   fprintf(stderr, "tuning station: %s\n", want[0] ? want : "(none)");
   mpc_tune(current_playing_url);
   current_track[0] = '\0';
-  textflow = 0;
   if (tuned != NULL)
     show_toast(tuned->name, 1500);
 }
@@ -438,7 +445,6 @@ static void get_current_track(void)
   }
   if (strcmp(current_track, new_track) != 0) {
     snprintf(current_track, sizeof(current_track), "%s", new_track);
-    textflow = 0;
     refresh_now = 1;
   }
 }
@@ -450,7 +456,7 @@ static void get_current_track(void)
 static void fill(int x, int y, int w, int h, Uint8 r, Uint8 g, Uint8 b)
 {
   SDL_Rect rect = { x, y, w, h };
-  SDL_FillRect(screen, &rect, SDL_MapRGB(screen->format, r, g, b));
+  SDL_FillRect(target, &rect, SDL_MapRGB(target->format, r, g, b));
 }
 
 static void blit_text(TTF_Font *font, const char *text, SDL_Color color, int x, int y)
@@ -463,7 +469,7 @@ static void blit_text(TTF_Font *font, const char *text, SDL_Color color, int x, 
   s = TTF_RenderUTF8_Solid(font, text, color);
   if (s == NULL)
     return;
-  SDL_BlitSurface(s, NULL, screen, &rect);
+  SDL_BlitSurface(s, NULL, target, &rect);
   SDL_FreeSurface(s);
 }
 
@@ -500,80 +506,86 @@ static void draw_tuner(void)
   fill(tuner_x(), OFFSET_Y, 4, VISIBLE_HEIGHT, 0xff, 0x77, 0x00);
 }
 
-/* byte offset of the n-th UTF-8 character in s */
-static size_t utf8_offset(const char *s, size_t n)
+/*
+ * Bottom line (title or toast). The text is rendered once into a cached
+ * surface; a long title scrolls pixel by pixel, time based, so the speed
+ * stays even regardless of frame timing.
+ */
+static const char *bottom_text(void)
 {
-  size_t i = 0;
-  while (s[i] != '\0' && n > 0) {
-    i++;
-    while (((unsigned char)s[i] & 0xC0) == 0x80)
-      i++;
-    n--;
-  }
-  return i;
+  if (toast_timeout > now_ms())
+    return toast;
+  if (current_playing_url[0] != '\0' && tuned != NULL)
+    return current_track;
+  return "";
 }
 
-static size_t utf8_len(const char *s)
-{
-  size_t n = 0;
-  for (; *s; s++)
-    if (((unsigned char)*s & 0xC0) != 0x80)
-      n++;
-  return n;
-}
-
-/* draw the currently playing track or a toast at the bottom of the screen */
-static void draw_current_track(void)
+static void update_track_surface(void)
 {
   const SDL_Color white = { 255, 255, 255, 255 };
-  char text[TRACK_MAX];
-  int w = 0, h = 0;
+  const char *text = bottom_text();
 
-  if (toast_timeout > now_ms())
-    snprintf(text, sizeof(text), "%s", toast);
-  else if (current_playing_url[0] != '\0' && tuned != NULL)
-    snprintf(text, sizeof(text), "%s", current_track);
-  else
-    text[0] = '\0';
-
-  if (text[0] == '\0')
+  if (strcmp(text, track_text) == 0)
     return;
+  snprintf(track_text, sizeof(track_text), "%s", text);
+  if (track_surf != NULL)
+    SDL_FreeSurface(track_surf);
+  track_surf = text[0] != '\0' ? TTF_RenderUTF8_Blended(track_font, text, white) : NULL;
+  scroll_start = now_ms();
+}
 
-  TTF_SizeUTF8(track_font, text, &w, &h);
-  if (w <= WIN_WIDTH - 20) {
-    blit_text(track_font, text, white, 10, VISIBLE_HEIGHT - 20 + OFFSET_Y);
-  } else {
-    /* marquee: rotate "text + gap" by textflow characters */
-    char loop[TRACK_MAX + 16];
-    char shown[2 * (TRACK_MAX + 16)];
-    size_t off;
+static int track_scrolls(void)
+{
+  update_track_surface();
+  return track_surf != NULL && track_surf->w > WIN_WIDTH - 20;
+}
 
-    snprintf(loop, sizeof(loop), "%s          ", text);
-    if (textflow >= utf8_len(loop))
-      textflow = 0;
-    off = utf8_offset(loop, textflow);
-    snprintf(shown, sizeof(shown), "%s%.*s", loop + off, (int)off, loop);
-    blit_text(track_font, shown, white, 0, VISIBLE_HEIGHT - 20 + OFFSET_Y);
+static void draw_current_track(void)
+{
+  SDL_Rect dst = { 10, TRACK_Y, 0, 0 };
+
+  update_track_surface();
+  if (track_surf == NULL)
+    return;
+  if (track_surf->w > WIN_WIDTH - 20) {
+    uint64_t el = now_ms() - scroll_start;
+    int period = track_surf->w + SCROLL_GAP;
+
+    el = el > SCROLL_PAUSE_MS ? el - SCROLL_PAUSE_MS : 0;
+    dst.x = 10 - (int)((el * SCROLL_SPEED / 1000) % (uint64_t)period);
+    SDL_BlitSurface(track_surf, NULL, screen, &dst);
+    dst.x += period;  /* the wrapped copy following the gap */
   }
+  SDL_BlitSurface(track_surf, NULL, screen, &dst);
 }
 
-static int track_needs_scroll(void)
+/*
+ * Grid, stations and tuner only change on input or tuning; they are drawn
+ * into a background surface and reused. With only the bottom line
+ * changing (scrolling), just that strip is copied and uploaded.
+ */
+static void draw_everything(int full)
 {
-  int w = 0, h = 0;
-  if (current_track[0] == '\0' || toast_timeout > now_ms())
-    return 0;
-  TTF_SizeUTF8(track_font, current_track, &w, &h);
-  return w > WIN_WIDTH - 20;
-}
+  SDL_Rect strip = { 0, TRACK_Y, WIN_WIDTH, WIN_HEIGHT - TRACK_Y };
 
-static void draw_everything(void)
-{
-  SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0, 0, 0));
-  draw_grid();
-  draw_stations();
-  draw_tuner();
+  if (full) {
+    target = background;
+    SDL_FillRect(background, NULL, SDL_MapRGB(background->format, 0, 0, 0));
+    draw_grid();
+    draw_stations();
+    draw_tuner();
+    target = screen;
+    SDL_BlitSurface(background, NULL, screen, NULL);
+  } else {
+    SDL_Rect r = strip;
+    SDL_BlitSurface(background, &strip, screen, &r);
+  }
   draw_current_track();
-  SDL_UpdateTexture(texture, NULL, screen->pixels, screen->pitch);
+  if (full)
+    SDL_UpdateTexture(texture, NULL, screen->pixels, screen->pitch);
+  else
+    SDL_UpdateTexture(texture, &strip,
+                      (Uint8 *)screen->pixels + strip.y * screen->pitch, screen->pitch);
   SDL_RenderClear(renderer);
   SDL_RenderCopy(renderer, texture, NULL, NULL);
   SDL_RenderPresent(renderer);
@@ -808,7 +820,8 @@ int main(int argc, char *argv[])
   const char *stations_arg = NULL, *font_arg = NULL;
   const char *stations_path, *font_path;
   int fullscreen = 0, delay = 2, opt, running = 1;
-  uint64_t next_redraw = 0, next_scroll = 0, next_poll = 0, next_save = 0, t;
+  uint64_t next_redraw = 0, next_poll = 0, next_save = 0, t;
+  int scrolling, presented;
   struct sigaction sa;
 
   while ((opt = getopt(argc, argv, "fs:F:d:h")) != -1) {
@@ -853,14 +866,18 @@ int main(int argc, char *argv[])
                             fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   if (window == NULL)
     die("SDL_CreateWindow");
-  renderer = SDL_CreateRenderer(window, -1, 0);
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+  if (renderer == NULL)
+    renderer = SDL_CreateRenderer(window, -1, 0);
   if (renderer == NULL)
     die("SDL_CreateRenderer");
   SDL_RenderSetLogicalSize(renderer, WIN_WIDTH, WIN_HEIGHT);
   texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, WIN_WIDTH, WIN_HEIGHT);
   screen = SDL_CreateRGBSurfaceWithFormat(0, WIN_WIDTH, WIN_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);
-  if (texture == NULL || screen == NULL)
+  background = SDL_CreateRGBSurfaceWithFormat(0, WIN_WIDTH, WIN_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);
+  target = screen;
+  if (texture == NULL || screen == NULL || background == NULL)
     die("SDL canvas");
   SDL_ShowCursor(SDL_ENABLE);
 
@@ -893,21 +910,30 @@ int main(int argc, char *argv[])
       get_current_track();
       next_poll = t + TRACK_POLL_MS;
     }
-    if (track_needs_scroll() && t >= next_scroll) {
-      textflow++;
-      next_scroll = t + SCROLL_MS;
-      refresh_now = 1;
-    }
+    scrolling = track_scrolls();
+    presented = 0;
     if (refresh_now || search_dir != 0 || t >= next_redraw) {
-      draw_everything();
+      draw_everything(1);
       refresh_now = 0;
       next_redraw = t + IDLE_REDRAW_MS;
+      presented = 1;
+    } else if (scrolling) {
+      draw_everything(0);
+      presented = 1;
     }
     if (t >= next_save) {
       save_position();  /* writes only if the dial has moved */
       next_save = t + SAVE_DELAY_MS;
     }
-    SDL_Delay(TICK_MS);
+    if (presented && scrolling) {
+      /* smooth scrolling: ~60 fps. With vsync RenderPresent already
+         waited for the next frame; without it, sleep the rest. */
+      uint64_t el = now_ms() - t;
+      if (el < 5)
+        SDL_Delay((Uint32)(FRAME_MS - el));
+    } else {
+      SDL_Delay(TICK_MS);
+    }
   }
 
   save_position();

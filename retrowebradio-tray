@@ -2,10 +2,12 @@
 """
 RetroWebRadio tray icon (panel indicator, like Onboard's).
 
-Left click / menu:  show or hide the radio (roehre), louder, quieter,
-                    mute, play/pause, current title
+Left click:         menu (current title, show/hide radio, play/pause,
+                    louder, quieter, mute, quit)
+Right click:        show/hide the radio window (roehre)
 Middle click:       mute on/off
 Scroll wheel:       volume up/down
+The icon shows a pause badge when paused/stopped, a slash when muted.
 
 Uses Gtk.StatusIcon (classic system tray). For panels that only show
 AppIndicators (e.g. GNOME with the AppIndicator extension) start it with
@@ -56,6 +58,7 @@ TEXTS = {
         "mpd not reachable": "mpd nicht erreichbar",
         "no volume control (mixer_type)": "keine Lautstärkeregelung (mixer_type)",
         "muted": "stumm", "volume %d%%": "Lautstärke %d%%",
+        "paused": "pausiert", "stopped": "gestoppt",
     },
 }
 
@@ -100,6 +103,7 @@ def icon_for(state):
     """state: '', 'muted' or 'offline' -> (file or None, theme icon name)"""
     name = "retrowebradio" + ("-" + state if state else "")
     fallback = {"": "audio-volume-high", "muted": "audio-volume-muted",
+                "paused": "media-playback-pause",
                 "offline": "audio-volume-muted"}[state]
     if ICON_DIR:
         return os.path.join(ICON_DIR, name + ".svg"), name
@@ -113,6 +117,7 @@ class Tray:
         self.shown_icon = None
         self.saved_volume = None  # volume before mute
         self.playing = False
+        self.paused = False
         self.title = ""
         self.roehre = None        # Popen of the GUI started by us
         self.idle = None
@@ -135,8 +140,9 @@ class Tray:
             self.ind = None
             self.icon = Gtk.StatusIcon()
             self.icon.set_title("RetroWebRadio")
-            self.icon.connect("popup-menu", self.on_popup)
-            self.icon.connect("activate", lambda *_a: self.toggle_gui())
+            # left click: menu, right click: show/hide the radio window
+            self.icon.connect("activate", self.on_left_click)
+            self.icon.connect("popup-menu", lambda *_a: self.toggle_gui())
             self.icon.connect("scroll-event", self.on_icon_scroll)
             self.icon.connect("button-press-event", self.on_icon_button)
 
@@ -180,7 +186,7 @@ class Tray:
     # ------------------------------------------------------------- state
     def refresh(self):
         out = mpc()  # plain `mpc`: title line, status line, volume line
-        self.volume, self.playing, self.title = None, False, ""
+        self.volume, self.playing, self.paused, self.title = None, False, False, ""
         self.reachable = out is not None
         if out is not None:
             lines = out.splitlines()
@@ -190,6 +196,7 @@ class Tray:
                     self.volume = int(v) if v.isdigit() else None
             if len(lines) >= 3:  # something in the queue
                 self.playing = lines[1].startswith("[playing]")
+                self.paused = lines[1].startswith("[paused]")
                 if not lines[0].startswith(("http", "mms://")):
                     self.title = lines[0]
         self.update_widgets()
@@ -198,6 +205,8 @@ class Tray:
         muted = self.volume == 0
         if not self.reachable:
             kind, state = "offline", _("mpd not reachable")
+        elif not self.playing:
+            kind, state = "paused", _("paused") if self.paused else _("stopped")
         elif self.volume is None:
             kind, state = "", _("no volume control (mixer_type)")
         elif muted:
@@ -268,8 +277,9 @@ class Tray:
         if event.button == 2:
             self.set_mute(self.volume != 0)
 
-    def on_popup(self, icon, button, time):
-        self.menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, time)
+    def on_left_click(self, icon):
+        self.menu.popup(None, None, Gtk.StatusIcon.position_menu, icon,
+                        1, Gtk.get_current_event_time())
 
     def quit(self):
         """Quit everything: radio GUI, playback and the tray itself."""

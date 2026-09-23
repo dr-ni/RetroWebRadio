@@ -76,13 +76,14 @@ already playing that station, it is taken over without re-tuning (no gap).
 For panels that only show AppIndicators (e.g. GNOME with the AppIndicator extension)
 start it with `RETROWEBRADIO_TRAY=indicator`.
 
-- left click or menu: show/hide the radio window (starts `roehre` if needed; hiding keeps it
+- left click: menu with current title, show/hide radio, play/pause, louder, quieter, mute, quit
+- right click: show/hide the radio window (starts `roehre` if needed; hiding keeps it
   running, so playback continues without a gap)
-- menu: current title, play/pause, louder, quieter, mute
 - middle click: mute on/off, scroll wheel: volume
 - "Quit" closes the radio GUI, stops playback (`mpc stop`) and ends the tray
 - menu in German when the locale is German, English otherwise
-- the icon is crossed out when muted and grey when mpd is not reachable; the tooltip
+- the icon gets a pause badge when paused or stopped, is crossed out when muted and grey
+  when mpd is not reachable; the tooltip
   shows volume and title, updated immediately via `mpc idleloop`
 
 ```sh
