@@ -27,7 +27,8 @@ sudo apt install mpd mpc libsdl2-dev libsdl2-ttf-dev libxml2-dev pkg-config
 make                 # builds roehre and stations.xml from stationslist.txt
 sudo make install    # system-wide (PREFIX=/usr/local): roehre and retrowebradio-tray
                      # in bin/, data in share/retrowebradio, entry in the
-                     # application menu (Audio/Video) with the radio icon
+                     # application menu (Audio/Video) with the radio icon;
+                     # the entry starts the tray icon and shows the radio
 sudo make uninstall
 ```
 
@@ -103,5 +104,7 @@ sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
 ./retrowebradio-tray &
 ```
 
-It starts `roehre` from its own directory (or from `$PATH`). For autostart, add
+It starts `roehre` from its own directory (or from `$PATH`). `retrowebradio-tray --show`
+(used by the menu entry) also shows the radio window; if the tray is already running,
+it only brings up the window instead of starting a second tray. For autostart, add
 `/path/to/retrowebradio-tray` to the desktop session's startup applications.

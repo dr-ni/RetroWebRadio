@@ -17,6 +17,7 @@ RETROWEBRADIO_TRAY=indicator. Talks to mpd through mpc; state updates come from
 
 GNU GENERAL PUBLIC LICENSE Version 3
 """
+import fcntl
 import os
 import shutil
 import signal
@@ -332,6 +333,12 @@ class Tray:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         GLib.timeout_add(300, lambda: self.update_widgets() and False)
 
+    def show_gui(self):
+        if self.gui_running():
+            self.signal_gui(signal.SIGUSR1)   # show and raise
+        else:
+            self.start_gui()
+
     def toggle_gui(self):
         if not self.gui_running():
             self.start_gui()
@@ -376,12 +383,68 @@ class Tray:
         return True
 
 
+def roehre_pids():
+    out = subprocess.run(["pgrep", "-x", "roehre"], capture_output=True, text=True).stdout
+    return [int(p) for p in out.split() if p.isdigit()]
+
+
+def show_radio_detached():
+    """Bring up the radio window without a tray of our own."""
+    pids = roehre_pids()
+    if pids:
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGUSR1)
+            except OSError:
+                pass
+        return
+    exe = find_roehre()
+    if exe:
+        subprocess.Popen([exe, "-d", "0"], cwd=os.path.dirname(exe),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+
+def single_instance_lock():
+    """Return an open, locked file, or None if another tray already runs."""
+    run = os.environ.get("XDG_RUNTIME_DIR")
+    path = (os.path.join(run, "retrowebradio-tray.lock") if run and run.startswith("/")
+            else "/tmp/retrowebradio-tray-%d.lock" % os.getuid())
+    f = open(path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+USAGE = """usage: retrowebradio-tray [--show]
+  --show   also show the radio window (start roehre if needed).
+           If the tray is already running, only the window is shown.
+"""
+
+
 def main():
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args) or any(a != "--show" for a in args):
+        sys.stdout.write(USAGE)
+        sys.exit(0 if args and args[0] in ("-h", "--help") else 2)
+    show = "--show" in args
+
     if shutil.which("mpc") is None:
         sys.exit("retrowebradio-tray: mpc not found (sudo apt install mpc)")
+    lock = single_instance_lock()
+    if lock is None:  # tray already there (e.g. started from the menu twice)
+        if show:
+            show_radio_detached()
+        return
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    tray = Tray(load_indicator())  # noqa: F841 (keep a reference)
+    tray = Tray(load_indicator())
+    if show:
+        GLib.idle_add(lambda: tray.show_gui() and False)
     Gtk.main()
+    lock.close()
 
 
 if __name__ == "__main__":
