@@ -1,19 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- RetroWebRadio tray icon, GPLv3 -->
-  <rect x="12" y="52" width="8" height="5" rx="1.5" fill="#3b2410"/>
-  <rect x="44" y="52" width="8" height="5" rx="1.5" fill="#3b2410"/>
-  <rect x="3" y="12" width="58" height="42" rx="9" fill="#c8782a" stroke="#4a2a0e" stroke-width="2.5"/>
-  <rect x="9" y="18" width="26" height="30" rx="4" fill="#3b2410"/>
-  <g stroke="#e8c98a" stroke-width="2.4" stroke-linecap="round">
-    <line x1="14" y1="22" x2="14" y2="44"/>
-    <line x1="19" y1="22" x2="19" y2="44"/>
-    <line x1="24" y1="22" x2="24" y2="44"/>
-    <line x1="29" y1="22" x2="29" y2="44"/>
+  <!-- RetroWebRadio icon: the radio of the GUI, GPLv3 -->
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9a6634"/>
+      <stop offset="1" stop-color="#6a3c1c"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="56" width="48" height="5" rx="1" fill="#1e0e06"/>
+  <path d="M4 18 Q4 5 17 5 L47 5 Q60 5 60 18 L60 55 Q60 58 57 58 L7 58 Q4 58 4 55 Z"
+        fill="url(#wood)" stroke="#2a140a" stroke-width="1.6"/>
+  <rect x="10" y="10" width="44" height="43" rx="4" fill="#4a2512"/>
+  <rect x="12.5" y="12.5" width="39" height="25" rx="1" fill="#000" stroke="#c9a352" stroke-width="1.4"/>
+  <g stroke="#0e5a1a" stroke-width="0.7">
+    <line x1="19" y1="13.5" x2="19" y2="36.5"/><line x1="26" y1="13.5" x2="26" y2="36.5"/>
+    <line x1="33" y1="13.5" x2="33" y2="36.5"/><line x1="40" y1="13.5" x2="40" y2="36.5"/>
+    <line x1="47" y1="13.5" x2="47" y2="36.5"/>
   </g>
-  <rect x="39" y="18" width="17" height="10" rx="2" fill="#f3e3a8" stroke="#4a2a0e" stroke-width="1.5"/>
-  <line x1="46" y1="19.5" x2="46" y2="26.5" stroke="#ff7700" stroke-width="2"/>
-  <circle cx="47.5" cy="40" r="7" fill="#3b2410" stroke="#f3e3a8" stroke-width="2"/>
-  <line x1="47.5" y1="40" x2="47.5" y2="34.5" stroke="#f3e3a8" stroke-width="2" stroke-linecap="round"/>
+  <g stroke="#95cf32" stroke-width="1.6" stroke-linecap="round">
+    <line x1="16" y1="17" x2="22" y2="17"/><line x1="18" y1="21" x2="24" y2="21"/>
+    <line x1="21" y1="25" x2="27" y2="25"/><line x1="30" y1="17" x2="37" y2="17"/>
+    <line x1="33" y1="21" x2="39" y2="21"/><line x1="36" y1="25" x2="43" y2="25"/>
+    <line x1="39" y1="29" x2="46" y2="29"/><line x1="24" y1="29" x2="29" y2="29"/>
+  </g>
+  <line x1="28.5" y1="13.5" x2="28.5" y2="36.5" stroke="#ff7700" stroke-width="1.8"/>
+  <rect x="10" y="40" width="44" height="1" fill="#b8914a"/>
+  <rect x="17" y="43" width="30" height="6" rx="1" fill="#100804"/>
+  <g fill="#efe4c8">
+    <rect x="18" y="44" width="4.6" height="4" rx="0.6"/><rect x="23.6" y="44" width="4.6" height="4" rx="0.6"/>
+    <rect x="29.2" y="44" width="4.6" height="4" rx="0.6"/><rect x="34.8" y="44" width="4.6" height="4" rx="0.6"/>
+    <rect x="40.4" y="44" width="4.6" height="4" rx="0.6"/>
+  </g>
+  <circle cx="13.8" cy="46" r="2" fill="#ffa040"/>
+  <circle cx="50.2" cy="46" r="2.4" fill="#50e070" stroke="#9a9080" stroke-width="0.8"/>
+  <circle cx="10" cy="53" r="4" fill="#2a160a" stroke="#120804" stroke-width="0.8"/>
+  <circle cx="54" cy="53" r="4" fill="#2a160a" stroke="#120804" stroke-width="0.8"/>
   <circle cx="45" cy="45" r="17" fill="#2a2a2a" stroke="#ffffff" stroke-width="3"/>
   <rect x="37.5" y="36" width="5.5" height="18" rx="1" fill="#ffffff"/>
   <rect x="47" y="36" width="5.5" height="18" rx="1" fill="#ffffff"/>

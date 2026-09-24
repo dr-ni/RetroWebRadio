@@ -145,10 +145,11 @@ panel with small labelled ivory push buttons, a pilot lamp, a magic eye and two 
 
 Push buttons, left to right: Spielen (play/pause), Lauter (volume +), Leiser (volume −),
 «Suche (scan left), Band+ / Band- (next / previous page), Suche» (scan right).
-"Spielen" stays pressed down while the radio plays. The knobs at the lower corners are
+"Spielen" stays pressed down while the radio plays (not paused). The knobs at the lower corners are
 step buttons: left knob tunes one step left, right knob one step right, holding repeats.
 
-The pilot lamp (left) glows while a station plays and turns red when muted.
+The pilot lamp (left) is on while the radio plays (also between stations), off while
+paused and red when muted.
 The magic eye (right) closes as the tuner reaches a station and opens between stations.
 The mouse wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 

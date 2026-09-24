@@ -594,9 +594,9 @@ static void draw_current_track(void)
   update_track_surface();
   if (track_surf == NULL)
     return;
-  if (toast_timeout > now_ms() && track_surf->w <= WIN_WIDTH - 20)
-    dst.x = (WIN_WIDTH - track_surf->w) / 2;  /* toasts centred when they fit */
-  else if (track_surf->w > WIN_WIDTH - 20) {
+  if (track_surf->w <= WIN_WIDTH - 20)
+    dst.x = (WIN_WIDTH - track_surf->w) / 2;  /* toasts and titles centred when they fit */
+  else {
     uint64_t el = now_ms() - scroll_start;
     int period = track_surf->w + SCROLL_GAP;
 
@@ -641,7 +641,7 @@ static void draw_everything(int full)
   SDL_RenderClear(renderer);
   if (cabinet_on)
   {
-    int playing = current_playing_url[0] != '\0' && !cur_paused;
+    int playing = !cur_paused;  /* "Spielen" latched like the lamp */
     lamp_shown = lamp_state();
     cabinet_render(renderer, texture, pressed_key,   /* play latched while playing */
                    playing ? 1u << CAB_KEY_PLAY : 0, lamp_shown, eye_opening());
@@ -693,10 +693,11 @@ static void press_key(int key)
 static const char *find_datafile(const char *override, const char *name,
                                  char *buf, size_t size);
 
-/* pilot lamp: red when muted, lit while a station plays */
+/* pilot lamp: on while the radio plays (also between stations), off
+   while paused; red when muted */
 static int lamp_state(void)
 {
-  if (current_playing_url[0] == '\0')
+  if (cur_paused)
     return 0;
   return cur_volume == 0 ? 2 : 1;
 }
