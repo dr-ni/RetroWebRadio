@@ -16,6 +16,13 @@
 CC       ?= gcc
 PKGS      = sdl2 SDL2_ttf libxml-2.0
 CFLAGS   ?= -O2 -g
+# X11 SHAPE (optional): cuts the radio window to the outline of the case
+XSHAPE   := $(shell pkg-config --exists x11 xext && echo yes)
+ifeq ($(XSHAPE),yes)
+PKGS     += x11 xext
+CPPFLAGS += -DHAVE_XSHAPE
+endif
+
 CFLAGS   += -Wall -Wextra -std=c99 $(shell pkg-config --cflags $(PKGS))
 LDLIBS   += $(shell pkg-config --libs $(PKGS)) -lm
 

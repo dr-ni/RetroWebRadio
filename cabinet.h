@@ -38,6 +38,9 @@ int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_p
 void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned latched,
                     int lamp, double eye_open);
 
+/* window shape of the case (alpha 255 inside), CAB_W x CAB_H; caller frees */
+SDL_Surface *cabinet_mask(void);
+
 /* what is at logical position x,y */
 int cabinet_hit(int x, int y);
 

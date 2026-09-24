@@ -11,3 +11,13 @@ Icon=retrowebradio
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 StartupWMClass=retrowebradio
+Actions=radio;display;
+
+[Desktop Action radio]
+Name=Radio
+Exec=@BINDIR@/retrowebradio-tray --show --radio
+
+[Desktop Action display]
+Name=Display only
+Name[de]=Nur Display
+Exec=@BINDIR@/retrowebradio-tray --show --display

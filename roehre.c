@@ -28,6 +28,12 @@
 #define _POSIX_C_SOURCE 200809L
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include <SDL_syswm.h>
+#ifdef HAVE_XSHAPE
+#include <X11/Xlib.h>
+#include <X11/extensions/shape.h>
+#endif
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -119,17 +125,24 @@ static int knob_dir = 0;              // cabinet knob held: -1 left, +1 right
 static uint64_t knob_next;            // next auto-repeat step
 static int lamp_shown = -1;           // lamp state on screen
 static int noise_on = 1;              // tuning static (-N or key n: off)
+static int shaped = 0;                // X11 window: can be cut to the case outline
+static int fullscreen = 0;
 static volatile sig_atomic_t stop_requested = 0;
-enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
+enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE, WIN_RADIO, WIN_DISPLAY };
 static volatile sig_atomic_t window_request = WIN_NONE;
 
-/* tray icon: SIGUSR1 show, SIGUSR2 hide, SIGRTMIN toggle */
+/* tray icon: SIGUSR1 show, SIGUSR2 hide, SIGRTMIN toggle,
+   SIGRTMIN+1 radio cabinet, SIGRTMIN+2 display only */
 static void on_window_signal(int sig)
 {
   if (sig == SIGUSR1)
     window_request = WIN_SHOW;
   else if (sig == SIGUSR2)
     window_request = WIN_HIDE;
+  else if (sig == SIGRTMIN + 1)
+    window_request = WIN_RADIO;
+  else if (sig == SIGRTMIN + 2)
+    window_request = WIN_DISPLAY;
   else
     window_request = WIN_TOGGLE;
 }
@@ -581,7 +594,9 @@ static void draw_current_track(void)
   update_track_surface();
   if (track_surf == NULL)
     return;
-  if (track_surf->w > WIN_WIDTH - 20) {
+  if (toast_timeout > now_ms() && track_surf->w <= WIN_WIDTH - 20)
+    dst.x = (WIN_WIDTH - track_surf->w) / 2;  /* toasts centred when they fit */
+  else if (track_surf->w > WIN_WIDTH - 20) {
     uint64_t el = now_ms() - scroll_start;
     int period = track_surf->w + SCROLL_GAP;
 
@@ -736,6 +751,92 @@ static double eye_opening(void)
   }
 }
 
+/*
+ * Cut the window to the outline of the case, so there are no dark
+ * corners around the rounded top (X11 SHAPE extension; on Wayland or
+ * without libXext the window just stays rectangular).
+ */
+static void apply_shape(int on, int w, int h)
+{
+#ifdef HAVE_XSHAPE
+  SDL_SysWMinfo info;
+  Display *dpy;
+  Window xw;
+  SDL_Surface *m;
+  XRectangle *rects;
+  int x, y, n = 0, cap, ww, wh;
+
+  SDL_VERSION(&info.version);
+  if (!SDL_GetWindowWMInfo(window, &info) || info.subsystem != SDL_SYSWM_X11)
+    return;
+  dpy = info.info.x11.display;
+  xw = info.info.x11.window;
+  if (!on) {  /* display alone: plain rectangle */
+    XShapeCombineMask(dpy, xw, ShapeBounding, 0, 0, None, ShapeSet);
+    XFlush(dpy);
+    return;
+  }
+  if ((m = cabinet_mask()) == NULL)
+    return;
+  SDL_GetWindowSize(window, &ww, &wh);
+  if (ww <= 0 || wh <= 0) {
+    ww = w;
+    wh = h;
+  }
+  cap = 4 * m->h;
+  rects = malloc(sizeof(*rects) * (size_t)cap);
+  for (y = 0; rects != NULL && y < m->h; y++) {  /* one rectangle per run */
+    const uint32_t *row = (const uint32_t *)((uint8_t *)m->pixels + y * m->pitch);
+    for (x = 0; x < m->w; x++) {
+      int x0;
+      if (!(row[x] >> 24))
+        continue;
+      for (x0 = x; x < m->w && (row[x] >> 24); x++)
+        ;
+      if (n == cap) {
+        XRectangle *more = realloc(rects, sizeof(*rects) * (size_t)(cap *= 2));
+        if (more == NULL)
+          break;
+        rects = more;
+      }
+      /* scale the logical mask to the real window size */
+      rects[n].x = (short)(x0 * ww / m->w);
+      rects[n].y = (short)(y * wh / m->h);
+      rects[n].width = (unsigned short)((x * ww / m->w) - rects[n].x);
+      rects[n].height = (unsigned short)(((y + 1) * wh / m->h) - rects[n].y);
+      if (rects[n].width > 0 && rects[n].height > 0)
+        n++;
+    }
+  }
+  if (rects != NULL && n > 0) {
+    XShapeCombineRectangles(dpy, xw, ShapeBounding, 0, 0, rects, n, ShapeSet, YXBanded);
+    XFlush(dpy);
+  }
+  free(rects);
+  SDL_FreeSurface(m);
+#else
+  (void)on;
+  (void)w;
+  (void)h;
+#endif
+}
+
+/* without a frame the case itself moves the window: drag it anywhere
+   except on the dial, the keys and the knobs */
+static SDL_HitTestResult hit_test(SDL_Window *win, const SDL_Point *pt, void *data)
+{
+  int ww, wh;
+
+  (void)data;
+  if (!cabinet_on || fullscreen)
+    return SDL_HITTEST_NORMAL;
+  SDL_GetWindowSize(win, &ww, &wh);
+  if (ww <= 0 || wh <= 0)
+    return SDL_HITTEST_NORMAL;
+  return cabinet_hit(pt->x * CAB_W / ww, pt->y * CAB_H / wh) == CAB_HIT_NONE
+         ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+}
+
 /* switch the radio case on/off */
 static void set_cabinet(int on)
 {
@@ -761,8 +862,13 @@ static void set_cabinet(int on)
   w = on ? CAB_W : WIN_WIDTH;
   h = on ? CAB_H : WIN_HEIGHT;
   SDL_RenderSetLogicalSize(renderer, w, h);
-  if (!(SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)))
+  if (!fullscreen) {
     SDL_SetWindowSize(window, w, h);
+    /* the radio has no window frame, the display alone keeps it */
+    SDL_SetWindowBordered(window, on ? SDL_FALSE : SDL_TRUE);
+    if (shaped)
+      apply_shape(on, w, h);
+  }
   refresh_now = 1;
 }
 
@@ -1024,6 +1130,12 @@ static void handle_window_request(int req)
   Uint32 flags = SDL_GetWindowFlags(window);
   int hidden = (flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) != 0;
 
+  if (req == WIN_RADIO || req == WIN_DISPLAY) {
+    if ((req == WIN_RADIO) != cabinet_on)
+      set_cabinet(req == WIN_RADIO);
+    req = WIN_SHOW;
+  }
+
   if (req == WIN_SHOW || (req == WIN_TOGGLE && hidden)) {
     SDL_ShowWindow(window);
     SDL_RestoreWindow(window);
@@ -1079,16 +1191,17 @@ static const char *find_datafile(const char *override, const char *name,
 static void usage(const char *prog)
 {
   fprintf(stderr,
-          "usage: %s [-f] [-s stations.xml] [-F font.ttf] [-d seconds]\n"
-          "  -f  fullscreen (scaled, aspect ratio kept)\n"
-          "  -g  show the radio cabinet around the dial, -G without\n"
-          "  -N  no static between stations (toggle with the n key)\n"
-          "      (default: as last time; toggle with the g key)\n"
-          "  -s  station list (default: next to the binary, ./,\n"
-          "      ~/.config/retrowebradio/, " DATADIR ")\n"
-          "  -F  TrueType font (default: VeraMono.ttf, searched like -s)\n"
-          "  -d  startup delay in seconds (default 2, avoids starting\n"
-          "      behind the taskbar during boot)\n", prog);
+          "usage: %s [-f] [-g|-G] [-N] [-s stations.xml] [-F font.ttf] [-d seconds]\n"
+          "  -f, --fullscreen  fullscreen (scaled, aspect ratio kept)\n"
+          "  -g, --radio       the radio cabinet around the dial, frameless window\n"
+          "  -G, --display     only the display (dial), normal window\n"
+          "                    (default: as last time; toggle with the g key)\n"
+          "  -N, --no-noise    no static between stations (toggle with the n key)\n"
+          "  -s, --stations    station list (default: next to the binary, ./,\n"
+          "                    ~/.config/retrowebradio/, " DATADIR ")\n"
+          "  -F, --font        TrueType font (default: VeraMono.ttf, searched like -s)\n"
+          "  -d, --delay       startup delay in seconds (default 2, avoids starting\n"
+          "                    behind the taskbar during boot)\n", prog);
 }
 
 static void die(const char *what)
@@ -1102,12 +1215,23 @@ int main(int argc, char *argv[])
   char stations_buf[PATH_MAX + 32], font_buf[PATH_MAX + 32];
   const char *stations_arg = NULL, *font_arg = NULL;
   const char *stations_path, *font_path;
-  int fullscreen = 0, delay = 2, opt, running = 1, force_cabinet = -1;
+  int delay = 2, opt, running = 1, force_cabinet = -1;
+  static const struct option longopts[] = {
+    { "fullscreen", no_argument, NULL, 'f' },
+    { "radio", no_argument, NULL, 'g' },
+    { "display", no_argument, NULL, 'G' },
+    { "no-noise", no_argument, NULL, 'N' },
+    { "stations", required_argument, NULL, 's' },
+    { "font", required_argument, NULL, 'F' },
+    { "delay", required_argument, NULL, 'd' },
+    { "help", no_argument, NULL, 'h' },
+    { NULL, 0, NULL, 0 }
+  };
   uint64_t next_redraw = 0, next_poll = 0, next_save = 0, t;
   int scrolling, presented;
   struct sigaction sa;
 
-  while ((opt = getopt(argc, argv, "fgGNs:F:d:h")) != -1) {
+  while ((opt = getopt_long(argc, argv, "fgGNs:F:d:h", longopts, NULL)) != -1) {
     switch (opt) {
     case 'f': fullscreen = 1; break;
     case 'g': force_cabinet = 1; break;
@@ -1141,6 +1265,8 @@ int main(int argc, char *argv[])
   sigaction(SIGUSR1, &sa, NULL);
   sigaction(SIGUSR2, &sa, NULL);
   sigaction(SIGRTMIN, &sa, NULL);
+  sigaction(SIGRTMIN + 1, &sa, NULL);
+  sigaction(SIGRTMIN + 2, &sa, NULL);
 
   if (delay > 0)
     sleep((unsigned)delay);
@@ -1158,8 +1284,8 @@ int main(int argc, char *argv[])
   if (force_cabinet >= 0)
     cabinet_on = force_cabinet;
   window = SDL_CreateWindow("RetroWebRadio", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                            cabinet_on ? CAB_W : WIN_WIDTH, cabinet_on ? CAB_H : WIN_HEIGHT,
-                            fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                              cabinet_on ? CAB_W : WIN_WIDTH, cabinet_on ? CAB_H : WIN_HEIGHT,
+                              fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   if (window == NULL)
     die("SDL_CreateWindow");
   {
@@ -1177,6 +1303,8 @@ int main(int argc, char *argv[])
   if (renderer == NULL)
     die("SDL_CreateRenderer");
   SDL_RenderSetLogicalSize(renderer, WIN_WIDTH, WIN_HEIGHT);
+  SDL_SetWindowHitTest(window, hit_test, NULL);
+  shaped = !fullscreen;
   texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, WIN_WIDTH, WIN_HEIGHT);
   screen = SDL_CreateRGBSurfaceWithFormat(0, WIN_WIDTH, WIN_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);

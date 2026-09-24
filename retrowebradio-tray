@@ -25,7 +25,11 @@ import subprocess
 import sys
 import warnings
 
-import gi
+# our options (--display!) must not reach GTK's own argument parsing
+ARGS = sys.argv[1:]
+del sys.argv[1:]
+
+import gi  # noqa: E402
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Gdk  # noqa: E402
 
@@ -329,13 +333,13 @@ class Tray:
         exe = find_roehre()
         if exe:
             self.roehre = subprocess.Popen(
-                [exe, "-d", "0"], cwd=os.path.dirname(exe),
+                [exe, "-d", "0"] + MODE_ARGS, cwd=os.path.dirname(exe),
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         GLib.timeout_add(300, lambda: self.update_widgets() and False)
 
     def show_gui(self):
         if self.gui_running():
-            self.signal_gui(signal.SIGUSR1)   # show and raise
+            self.signal_gui(mode_signal() or signal.SIGUSR1)   # (switch,) show, raise
         else:
             self.start_gui()
 
@@ -394,13 +398,13 @@ def show_radio_detached():
     if pids:
         for pid in pids:
             try:
-                os.kill(pid, signal.SIGUSR1)
+                os.kill(pid, mode_signal() or signal.SIGUSR1)
             except OSError:
                 pass
         return
     exe = find_roehre()
     if exe:
-        subprocess.Popen([exe, "-d", "0"], cwd=os.path.dirname(exe),
+        subprocess.Popen([exe, "-d", "0"] + MODE_ARGS, cwd=os.path.dirname(exe),
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
 
@@ -419,18 +423,34 @@ def single_instance_lock():
     return f
 
 
-USAGE = """usage: retrowebradio-tray [--show]
-  --show   also show the radio window (start roehre if needed).
-           If the tray is already running, only the window is shown.
+USAGE = """usage: retrowebradio-tray [--show] [--radio | --display]
+  --show     also show the radio window (start roehre if needed).
+             If the tray is already running, only the window is shown.
+  --radio    show it with the radio cabinet
+  --display  show only the display (dial)
 """
+
+MODE_ARGS = []   # passed to roehre: [] (as last time), ["--radio"], ["--display"]
+
+
+def mode_signal():
+    """Signal that switches a running roehre to the requested mode (and shows it)."""
+    if MODE_ARGS == ["--radio"]:
+        return signal.SIGRTMIN + 1
+    if MODE_ARGS == ["--display"]:
+        return signal.SIGRTMIN + 2
+    return None
 
 
 def main():
-    args = sys.argv[1:]
-    if any(a in ("-h", "--help") for a in args) or any(a != "--show" for a in args):
+    args = ARGS
+    known = ("--show", "--radio", "--display")
+    if any(a in ("-h", "--help") for a in args) or any(a not in known for a in args) \
+            or ("--radio" in args and "--display" in args):
         sys.stdout.write(USAGE)
         sys.exit(0 if args and args[0] in ("-h", "--help") else 2)
-    show = "--show" in args
+    MODE_ARGS[:] = [a for a in args if a in ("--radio", "--display")]
+    show = "--show" in args or bool(MODE_ARGS)
 
     if shutil.which("mpc") is None:
         sys.exit("retrowebradio-tray: mpc not found (sudo apt install mpc)")

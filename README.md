@@ -102,14 +102,15 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 ## Usage
 
 ```
-./roehre [-f] [-g|-G] [-s stations.xml] [-F font.ttf] [-d seconds]
+./roehre [-f] [-g|-G] [-N] [-s stations.xml] [-F font.ttf] [-d seconds]
 ```
 
 | Option | Meaning |
 |--------|---------|
 | `-f` | fullscreen, scaled to the display with the aspect ratio kept |
-| `-g` / `-G` | with / without the radio cabinet (default: as last time) |
-| `-N` | no static between stations |
+| `-g`, `--radio` | the radio: cabinet around the dial, window without frame, cut to the outline of the case (X11), moved by dragging the case |
+| `-G`, `--display` | only the display (dial) in a normal window (default for both: as last time) |
+| `-N`, `--no-noise` | no static between stations |
 | `-s` | station list; default: next to the binary, `./`, `~/.config/retrowebradio/`, `PREFIX/share/retrowebradio` |
 | `-F` | TrueType font, searched like `-s` (default `VeraMono.ttf`) |
 | `-d` | startup delay in seconds (default 2, avoids starting behind the taskbar at boot) |
@@ -179,5 +180,6 @@ sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
 
 It starts `roehre` from its own directory (or from `$PATH`). `retrowebradio-tray --show`
 (used by the menu entry) also shows the radio window; if the tray is already running,
-it only brings up the window instead of starting a second tray. For autostart, add
+it only brings up the window instead of starting a second tray. `--radio` / `--display`
+switch a running radio to that view (the menu entry offers both as actions). For autostart, add
 `/path/to/retrowebradio-tray` to the desktop session's startup applications.

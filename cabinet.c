@@ -42,7 +42,7 @@
 #define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 30)
 #define LAMP_Y      (KEYS_Y + KEY_H / 2)
 #define LAMP_R      12
-#define EYE_X       (CAB_W - LAMP_X)
+#define EYE_X       (CAB_W - LAMP_X + 8)
 #define EYE_R       22
 #define EYE_STEPS   24                        /* pre-rendered shadow widths */
 #define KNOB_R      30
@@ -579,6 +579,22 @@ void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned la
     kr.h = KEY_H + PRESS_DY + 2;
     SDL_RenderCopy(r, key_tex[k][down], NULL, &kr);
   }
+}
+
+SDL_Surface *cabinet_mask(void)
+{
+  SDL_Surface *m = SDL_CreateRGBSurfaceWithFormat(0, CAB_W, CAB_H, 32, SDL_PIXELFORMAT_ARGB8888);
+  int x, y;
+
+  if (m == NULL)
+    return NULL;
+  for (y = 0; y < CAB_H; y++)
+    for (x = 0; x < CAB_W; x++) {
+      int in = sd_box(x + 0.5, y + 0.5, 4, 4, CAB_W - 4, BODY_BOTTOM, 64, 8) < 0.5 ||
+               (x >= 30 && x < CAB_W - 30 && y >= BODY_BOTTOM - 6 && y < CAB_H - 2);
+      ((uint32_t *)((uint8_t *)m->pixels + y * m->pitch))[x] = in ? 0xff000000u : 0;
+    }
+  return m;
 }
 
 int cabinet_hit(int x, int y)
