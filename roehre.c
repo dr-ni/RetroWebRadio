@@ -75,7 +75,6 @@
 #define TUNE_DELAY_MS 1000  // station must stay tuned this long before it plays
 #define SCAN_STEP 2         // px per tick while auto-scanning
 #define KEY_STEP 5          // px per cursor key press
-#define FLICKER_MS 50       // magic eye / neon lamp flicker frame rate
 #define NOISE_LEVEL 0.35    // static at full volume when fully detuned
 #define KNOB_DELAY_MS 400   // cabinet knob held: repeat after ...
 #define KNOB_REPEAT_MS 50   // ... one step every ...
@@ -532,8 +531,8 @@ static void draw_grid(void)
 
 static void draw_stations(void)
 {
-  const SDL_Color normal = { 120, 238, 172, 255 };     /* backlit mint green */
-  const SDL_Color highlight = { 255, 250, 205, 255 };
+  const SDL_Color normal = { 92, 196, 140, 255 };      /* backlit mint green */
+  const SDL_Color highlight = { 232, 236, 196, 255 };
   const struct page *p = page_now();
   int i, w, h;
 
@@ -564,15 +563,12 @@ static void blend_rect(int x0, int y0, int w, int h, int r, int g, int b, double
   }
 }
 
-/* the tuner: a translucent, glowing orange bar with a bright core */
+/* the tuner: a narrow glowing needle */
 static void draw_tuner(void)
 {
   int x = tuner_x() + 2;
-  blend_rect(x - 10, OFFSET_Y, 20, VISIBLE_HEIGHT, 255, 55, 10, 0.40);   /* glass bar */
-  blend_rect(x - 6, OFFSET_Y, 12, VISIBLE_HEIGHT, 255, 85, 25, 0.35);
-  blend_rect(x - 10, OFFSET_Y, 2, VISIBLE_HEIGHT, 255, 130, 60, 0.45);   /* lit edges */
-  blend_rect(x + 8, OFFSET_Y, 2, VISIBLE_HEIGHT, 255, 130, 60, 0.45);
-  blend_rect(x - 1, OFFSET_Y, 2, VISIBLE_HEIGHT, 255, 180, 120, 0.55);
+  blend_rect(x - 4, OFFSET_Y, 8, VISIBLE_HEIGHT, 255, 70, 15, 0.18);     /* faint halo */
+  blend_rect(x - 1, OFFSET_Y, 3, VISIBLE_HEIGHT, 255, 110, 30, 0.95);    /* needle */
 }
 
 /*
@@ -595,8 +591,8 @@ static void make_backplate(void)
       double dx = (x - WIN_WIDTH / 2.0) / (WIN_WIDTH * 0.55);
       double dy = (y - WIN_HEIGHT * 0.45) / (WIN_HEIGHT * 0.6);
       double g = exp(-(dx * dx + dy * dy));
-      row[x] = 0xff000000u | (Uint32)((int)(2 * g) << 16) | (Uint32)((int)(20 * g) << 8) |
-               (Uint32)(int)(12 * g);
+      row[x] = 0xff000000u | (Uint32)((int)(1 * g) << 16) | (Uint32)((int)(12 * g) << 8) |
+               (Uint32)(int)(7 * g);
     }
   }
 }
@@ -659,7 +655,7 @@ static void bloom(SDL_Surface *s)
       for (c = 0; c < 3; c++) {
         float g = (a[(y0 * sw + x0) * 3 + c] * (1 - wx) + a[(y0 * sw + x1) * 3 + c] * wx) * (1 - wy) +
                   (a[(y1 * sw + x0) * 3 + c] * (1 - wx) + a[(y1 * sw + x1) * 3 + c] * wx) * wy;
-        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 1.1f * g);
+        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 0.6f * g);
         out |= (Uint32)(v > 255 ? 255 : v) << (16 - 8 * c);
       }
       row[x] = out;
@@ -764,17 +760,9 @@ static void draw_everything(int full)
   present();
 }
 
-/* slow random flicker in -1..1 (sum of detuned sines plus a little noise) */
-static double flicker(double t, double seed)
-{
-  return 0.5 * sin(t * 7.3 + seed) + 0.3 * sin(t * 17.9 + 2 * seed) +
-         0.2 * sin(t * 43.1 + 3 * seed) + 0.15 * ((rand() / (double)RAND_MAX) * 2 - 1);
-}
-
 /* put the dial texture (with case), the magic eye and the lamp on screen */
 static void present(void)
 {
-  double t = now_ms() / 1000.0;
   int ex = WIN_WIDTH - 38, ey = 38;   /* magic eye: top right in the dial */
 
   SDL_RenderClear(renderer);
@@ -782,15 +770,13 @@ static void present(void)
     int playing = !cur_paused;  /* "Spielen" latched like the lamp */
     lamp_shown = lamp_state();
     cabinet_render(renderer, texture, pressed_key,   /* play latched while playing */
-                   playing ? 1u << CAB_KEY_PLAY : 0, lamp_shown,
-                   0.93 + 0.06 * flicker(t, 1.7));
+                   playing ? 1u << CAB_KEY_PLAY : 0, lamp_shown, 1.0);
     ex += CAB_DIAL_X;
     ey += CAB_DIAL_Y;
   } else {
     SDL_RenderCopy(renderer, texture, NULL, NULL);
   }
-  eye_render(renderer, ex, ey, eye_opening() + 0.025 * flicker(t, 4.1),
-             0.88 + 0.08 * flicker(t, 0.3));
+  eye_render(renderer, ex, ey, eye_opening(), 1.0);
   SDL_RenderPresent(renderer);
 }
 
@@ -1419,7 +1405,7 @@ int main(int argc, char *argv[])
     { "help", no_argument, NULL, 'h' },
     { NULL, 0, NULL, 0 }
   };
-  uint64_t next_redraw = 0, next_poll = 0, next_save = 0, next_flicker = 0, t;
+  uint64_t next_redraw = 0, next_poll = 0, next_save = 0, t;
   int scrolling, presented;
   struct sigaction sa;
 
@@ -1570,10 +1556,6 @@ int main(int argc, char *argv[])
     if (t >= next_save) {
       save_position();  /* writes only if the dial has moved */
       next_save = t + SAVE_DELAY_MS;
-    }
-    if (!presented && t >= next_flicker) {  /* magic eye and neon lamp flicker */
-      present();
-      next_flicker = t + FLICKER_MS;
     }
     if (presented && scrolling) {
       /* smooth scrolling: ~60 fps. With vsync RenderPresent already

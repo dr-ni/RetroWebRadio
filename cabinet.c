@@ -5,7 +5,7 @@
  * A post-war table radio in the style of around 1950: box-shaped walnut
  * case with rounded top edges, a wide light veneer frame around a darker
  * front panel holding the dial, a figured lower panel with a row of small
- * ivory push buttons with printed labels, a neon pilot lamp and two
+ * ivory push buttons with printed labels, a neon glow lamp and two
  * Bakelite knobs that work as step buttons (left / right, repeating while
  * held). The magic eye (eye_init / eye_render) sits in the dial.
  *
@@ -380,9 +380,8 @@ static SDL_Surface *draw_case(void)
     rrect(s, kx - 6, ky - 6, kx2 + KEY_W + 6, ky + KEY_H + 8, 5, 0x100804, 1.5, 0x3a2412);
   }
 
-  /* lamp socket */
-  rrect(s, LAMP_X - LAMP_R - 4, LAMP_Y - LAMP_R - 4, LAMP_X + LAMP_R + 4, LAMP_Y + LAMP_R + 4,
-        LAMP_R + 4, 0x1a0d06, 2.5, 0x6a4a28);
+  /* window for the neon tube */
+  rrect(s, LAMP_X - 11, LAMP_Y - 21, LAMP_X + 11, LAMP_Y + 23, 8, 0x1a0d06, 2.5, 0x6a4a28);
   return s;
 }
 
@@ -455,56 +454,69 @@ static SDL_Surface *draw_knob(int k, int down)
 }
 
 /*
- * Pilot lamp as a neon glow lamp: a small glass bulb with two electrode
- * plates. state 0: off (grey glass, dark plates), 1: orange neon glow
- * around the plates, 2: red (muted).
+ * Pilot lamp as a small neon glow lamp: an upright glass tube with a
+ * cross-hatched mesh electrode that glows orange (red when muted), with a
+ * bright spot, a warm halo and the glass tip at the bottom.
+ * state 0: off (clear glass, grey mesh).
  */
 static SDL_Surface *draw_lamp(int state)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, LAMP_S, LAMP_S, 32, SDL_PIXELFORMAT_ARGB8888);
-  double c = LAMP_S / 2.0;
+  const double c = LAMP_S / 2.0, hw = 7.5, hh = 17;       /* tube half width / height */
+  uint32_t neon = state == 2 ? 0xff3010 : 0xff8a28;
   int x, y;
-  uint32_t neon = state == 2 ? 0xff2a12 : 0xff7424;
 
   if (s == NULL)
     return NULL;
   SDL_FillRect(s, NULL, 0);
   for (y = 0; y < LAMP_S; y++)
     for (x = 0; x < LAMP_S; x++) {
-      double dx = x + 0.5 - c, dy = y + 0.5 - c, r = hypot(dx, dy);
-      double e1 = hypot(fmax(fabs(dx + 3.5) - 1.2, 0), fmax(fabs(dy) - 6, 0));  /* plates */
-      double e2 = hypot(fmax(fabs(dx - 3.5) - 1.2, 0), fmax(fabs(dy) - 6, 0));
-      double e = fmin(e1, e2), a = LAMP_R - r > 1 ? 1 : LAMP_R - r;
+      double dx = x + 0.5 - c, dy = y + 0.5 - c;
+      double d = sd_rrect(x + 0.5, y + 0.5, c - hw, c - hh, c + hw, c + hh, hw);
+      double a = 0.5 - d > 1 ? 1 : 0.5 - d;
+      double in = d < -2.2;                                 /* inside the glass wall */
+      double mesh, glow;
 
-      if (state)                                                 /* halo outside */
-        blend(s, x, y, neon, 0.50 * exp(-pow(r / (LAMP_R * 1.7), 2)));
-      if (r >= LAMP_R)
+      if (state)                                            /* warm halo */
+        blend(s, x, y, neon, 0.65 * exp(-(dx * dx / 200 + dy * dy / 520)));
+      if (a <= 0)
         continue;
-      blend(s, x, y, state ? 0x6a2a10 : 0x2c2826, a * 0.92);       /* glass */
-      if (state) {                                               /* glow cloud */
-        blend(s, x, y, neon, a * exp(-e / 3.6));
-        blend(s, x, y, 0xffc890, a * 0.75 * exp(-e / 1.3));      /* hot core */
-      } else if (e < 0.8) {
-        blend(s, x, y, 0x6a6460, a * (0.8 - e));                 /* bare plates */
+      blend(s, x, y, state ? 0x5a2008 : 0x303030, a * 0.55);   /* glass body */
+      /* diagonal wire mesh in the middle of the tube */
+      mesh = fmin(fabs(fmod(dx + dy + 100, 4.0) - 2.0), fabs(fmod(dx - dy + 100, 4.0) - 2.0));
+      if (in && fabs(dx) < hw - 3 && fabs(dy) < hh - 5) {
+        double wire = mesh < 0.7 ? 1 : 0;
+        if (state) {
+          glow = exp(-(dx * dx / 18 + (dy - 2) * (dy - 2) / 90));   /* bright spot */
+          blend(s, x, y, neon, 0.85);
+          blend(s, x, y, 0xfff0c8, 0.9 * glow);
+          if (wire)
+            blend(s, x, y, 0x7a2a08, 0.55 * (1 - glow));
+        } else if (wire) {
+          blend(s, x, y, 0x8a8680, 0.8);
+        }
       }
-      if (r > LAMP_R - 2)                                        /* glass rim */
-        blend(s, x, y, 0x9a948c, a * 0.35);
-      if (hypot(dx + 4, dy + 5) < 2.2)                           /* reflection */
-        blend(s, x, y, 0xffffff, 0.45);
+      if (d > -2.2)                                          /* glass wall */
+        blend(s, x, y, state ? 0xffb070 : 0xb8b4ac, a * 0.45);
+      if (dx < -hw + 3.5 && dx > -hw + 2 && fabs(dy) < hh - 6)
+        blend(s, x, y, 0xffffff, 0.40);                    /* reflection */
     }
+  /* glass tip */
+  rrect(s, c - 2, c + hh - 1, c + 2, c + hh + 3, 2, state ? 0xffb070 : 0x9a968e, 0, 0);
   return s;
 }
 
 /*
- * Magic eye (tuning indicator tube, seen from the front): green
- * fluorescent ring around a dark cap, with two dark shadow sectors at the
- * top and bottom. open = 1: detuned, wide sectors; open = 0: tuned in,
- * the sectors are closed.
+ * Magic eye (tuning indicator tube, seen from the top): vivid green
+ * fluorescent ring under a glass dome, a light grey metal cap in the
+ * centre and two darker shadow sectors (top and bottom). open = 1:
+ * detuned, wide sectors; open = 0: tuned in, the sectors are closed.
  */
 static SDL_Surface *draw_eye(double open)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, EYE_S, EYE_S, 32, SDL_PIXELFORMAT_ARGB8888);
-  double c = EYE_S / 2.0, half = 4 + open * 50;   /* half width of a sector, degrees */
+  const double c = EYE_S / 2.0, cap = EYE_R * 0.52;
+  double half = 4 + open * 50;                     /* half width of a sector, degrees */
   int x, y;
 
   if (s == NULL)
@@ -513,25 +525,37 @@ static SDL_Surface *draw_eye(double open)
   for (y = 0; y < EYE_S; y++)
     for (x = 0; x < EYE_S; x++) {
       double dx = x + 0.5 - c, dy = y + 0.5 - c, r = hypot(dx, dy);
-      double deg = fabs(atan2(dx, -dy)) * 180 / M_PI;   /* 0 = up, 180 = down */
-      double off = deg < 90 ? deg : 180 - deg;           /* distance to the axis */
-      double edge, glow, a;
-      if (r > EYE_R && r < EYE_R + 4) {                  /* chrome bezel */
+      double ang = atan2(dx, -dy);
+      double deg = fabs(ang) * 180 / M_PI;         /* 0 = up, 180 = down */
+      double off = deg < 90 ? deg : 180 - deg;     /* distance to the axis */
+      double a, lit, facet, v;
+
+      if (r > EYE_R && r < EYE_R + 4) {            /* chrome bezel */
         double t = 1.1 - 0.5 * (dy + EYE_R) / (2.0 * EYE_R);
         blend(s, x, y, rgbf(170 * t, 165 * t, 150 * t), EYE_R + 4 - r > 1 ? 1 : EYE_R + 4 - r);
       }
       if (r > EYE_R)
         continue;
       a = EYE_R - r > 1 ? 1 : EYE_R - r;
-      blend(s, x, y, 0x06140a, a);                       /* dark glass */
-      if (r > 7) {
-        edge = (off - half) / 2.5;                       /* soft shadow edge */
-        glow = edge > 1 ? 1 : edge < 0 ? 0 : edge;
-        glow *= 0.55 + 0.45 * (r - 7) / (EYE_R - 7);     /* brighter outside */
-        blend(s, x, y, rgbf(60 + 120 * glow, 255 * glow, 90 + 60 * glow), a * glow);
+      blend(s, x, y, 0x03120a, a);                 /* dark background */
+      if (r > cap - 1) {
+        lit = (off - half) / 2.0;                  /* soft shadow edge */
+        lit = lit > 1 ? 1 : lit < 0 ? 0 : lit;
+        facet = 0.82 + 0.18 * cos(ang * 4 + 0.6);  /* angular light patches */
+        v = (0.62 + 0.38 * (r - cap) / (EYE_R - cap)) * facet;
+        /* lit: vivid green; shadow: dim green, not black */
+        blend(s, x, y, rgbf((25 + 55 * v) * (0.25 + 0.75 * lit), (255 * v) * (0.3 + 0.7 * lit),
+                            (45 + 45 * v) * (0.25 + 0.75 * lit)), a);
       }
-      if (r < 7)                                         /* cathode cap */
-        blend(s, x, y, 0x101010, 7 - r > 1 ? 1 : 7 - r);
+      if (r < cap + 0.5) {                         /* light grey metal cap */
+        double t = 1.0 - 0.25 * (dx + dy) / (2 * cap);
+        blend(s, x, y, rgbf(214 * t, 214 * t, 204 * t), cap + 0.5 - r > 1 ? 1 : cap + 0.5 - r);
+        if (r > cap - 1.2)
+          blend(s, x, y, 0x707068, 0.5);
+      }
+      /* glass dome: a soft reflection arc at the top left */
+      if (r > EYE_R * 0.72 && r < EYE_R * 0.9 && ang < -0.4 && ang > -1.6)
+        blend(s, x, y, 0xffffff, 0.22);
     }
   return s;
 }
