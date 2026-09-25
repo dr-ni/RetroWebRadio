@@ -67,7 +67,7 @@
 #define TICK_MS 20          // main loop period
 #define IDLE_REDRAW_MS 500  // redraw at least this often
 #define EYE_CX (WIN_WIDTH - 50)   // magic eye centre in the dial
-#define EYE_CY 44
+#define EYE_CY 52
 #define FRAME_MS 16         // frame period while the title scrolls
 #define SCROLL_SPEED 45     // title scrolling in px per second
 #define SCROLL_GAP 60       // px between end and restart of a scrolling title
@@ -554,7 +554,7 @@ static void draw_stations(void)
 /* "Empfang" (reception) printed under the magic eye */
 static void draw_eye_caption(void)
 {
-  const SDL_Color c = { 70, 140, 100, 255 };
+  const SDL_Color c = { 200, 210, 170, 255 };   /* like the tuned station */
   int w = 0, h = 0;
 
   if (caption_font == NULL || TTF_SizeUTF8(caption_font, "Empfang", &w, &h) != 0)
@@ -605,8 +605,7 @@ static void make_backplate(void)
       double dx = (x - WIN_WIDTH / 2.0) / (WIN_WIDTH * 0.55);
       double dy = (y - WIN_HEIGHT * 0.45) / (WIN_HEIGHT * 0.6);
       double g = exp(-(dx * dx + dy * dy));
-      row[x] = 0xff000000u | (Uint32)((int)(1 * g) << 16) | (Uint32)((int)(12 * g) << 8) |
-               (Uint32)(int)(7 * g);
+      row[x] = 0xff000000u | (Uint32)((int)(4 * g) << 8) | (Uint32)(int)(2 * g);
     }
   }
 }
@@ -669,7 +668,7 @@ static void bloom(SDL_Surface *s)
       for (c = 0; c < 3; c++) {
         float g = (a[(y0 * sw + x0) * 3 + c] * (1 - wx) + a[(y0 * sw + x1) * 3 + c] * wx) * (1 - wy) +
                   (a[(y1 * sw + x0) * 3 + c] * (1 - wx) + a[(y1 * sw + x1) * 3 + c] * wx) * wy;
-        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 0.45f * g);
+        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 0.3f * g);
         out |= (Uint32)(v > 255 ? 255 : v) << (16 - 8 * c);
       }
       row[x] = out;
