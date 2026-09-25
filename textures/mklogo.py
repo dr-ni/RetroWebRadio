@@ -20,7 +20,7 @@ gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf
 
 LOGO_W, LOGO_H = 52, 54        # badge field (keeps the logo's 424:438 ratio)
-SIG_H = 32                     # height of the signature below the keys
+SIG_H = 64                     # height of the signature below the keys
 
 here = os.path.dirname(os.path.realpath(__file__))
 src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "Niethammer-Audio.png")
@@ -53,7 +53,7 @@ def shrink(alpha, w, h):
 spk = trace(speaker, 0.8)                     # keep the speaker's corners
 sig = trace(white, 1.25)                      # round, smooth pen strokes
 # a slightly broader pen, so the thin strokes survive the small sizes
-sig = np.asarray(Image.fromarray(sig).filter(ImageFilter.MaxFilter(5)))
+sig = np.asarray(Image.fromarray(sig).filter(ImageFilter.MaxFilter(9)))
 
 logo_speaker = shrink(spk, LOGO_W, LOGO_H)
 logo_sig = shrink(sig, LOGO_W, LOGO_H)
