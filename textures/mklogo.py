@@ -18,7 +18,7 @@ import gi
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import GdkPixbuf
 
-LOGO_W, LOGO_H = 52, 54        # badge field (keeps the logo's 424:438 ratio)
+LOGO_W, LOGO_H = 44, 46        # badge field (keeps the logo's 424:438 ratio)
 
 here = os.path.dirname(os.path.realpath(__file__))
 src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "Niethammer-Audio.png")

@@ -293,7 +293,7 @@ static uint32_t brass(double v, double px, double py)
 static void draw_badge(SDL_Surface *s)
 {
   const int fw = LOGO_W, fh = LOGO_H, fx0 = (CAB_W - LOGO_W) / 2;
-  const int fy0 = (RECESS_Y0 - LOGO_H) / 2 + 2;
+  const int fy0 = (RECESS_Y0 - LOGO_H) / 2 + 6;  /* a little below the centre */
   const double bx0 = fx0 - 7, by0 = fy0 - 7, bx1 = fx0 + fw + 7, by1 = fy0 + fh + 7;
   int x, y;
 
