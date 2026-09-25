@@ -44,6 +44,7 @@
 #include <sys/stat.h>
 #include "stations.h"
 #include "radio_icon.h"
+#include "cabinet.h"
 
 #define STATSPERCOL 10      // maximal stations per column
 #define WIN_WIDTH 644       // width of screen, 644/14=46 grid
@@ -103,6 +104,9 @@ static uint64_t scroll_start;
 static char toast[128];               // short message at the bottom (volume, station)
 static uint64_t toast_timeout = 0;
 static int refresh_now = 1;
+static int cabinet_on = 0;            // draw the radio case around the dial
+static int cur_volume = -1;           // last known mpd volume, -1 unknown
+static int mouse_x, mouse_y;          // last pointer position (logical)
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
 static volatile sig_atomic_t window_request = WIN_NONE;
@@ -226,6 +230,7 @@ static void mpc_toggle_mute(void)
     snprintf(msg, sizeof(msg), "Volume %s%%", arg);
   }
   run_async(argv);
+  cur_volume = atoi(arg);  /* volume knob of the cabinet */
   show_toast(msg, 800);
 }
 
@@ -434,7 +439,12 @@ static void get_current_track(void)
     snprintf(new_track, sizeof(new_track), "Error receiving station info");
   } else {
     while (fgets(line, sizeof(line), fp) != NULL) {
+      int v;
       chomp(line);
+      if (sscanf(line, "volume: %d%%", &v) == 1 && v != cur_volume) {
+        cur_volume = v;       /* moves the volume knob of the cabinet */
+        refresh_now = 1;
+      }
       if (strncmp(line, "ERROR", 5) == 0) {
         snprintf(new_track, sizeof(new_track), "%s", line);
         break;
@@ -594,8 +604,44 @@ static void draw_everything(int full)
     SDL_UpdateTexture(texture, &strip,
                       (Uint8 *)screen->pixels + strip.y * screen->pitch, screen->pitch);
   SDL_RenderClear(renderer);
-  SDL_RenderCopy(renderer, texture, NULL, NULL);
+  if (cabinet_on)
+    cabinet_render(renderer, texture, cur_volume >= 0 ? cur_volume / 100.0 : -1,
+                   ((current_page - 1) + (double)(xpos + OFFSET_X) / WIN_WIDTH) / stations.pages);
+  else
+    SDL_RenderCopy(renderer, texture, NULL, NULL);
   SDL_RenderPresent(renderer);
+}
+
+static void change_volume(int delta)
+{
+  char arg[8], msg[24];
+
+  snprintf(arg, sizeof(arg), "%+d", delta);
+  mpc_volume(arg);
+  if (cur_volume >= 0) {  /* move the knob right away, the poll confirms */
+    cur_volume += delta;
+    cur_volume = cur_volume < 0 ? 0 : cur_volume > 100 ? 100 : cur_volume;
+  }
+  snprintf(msg, sizeof(msg), "Volume %+d", delta);
+  show_toast(msg, 300);
+}
+
+/* switch the radio case on/off */
+static void set_cabinet(int on)
+{
+  int w, h;
+
+  if (on && cabinet_init(renderer) != 0) {
+    fprintf(stderr, "cannot draw the cabinet\n");
+    on = 0;
+  }
+  cabinet_on = on;
+  w = on ? CAB_W : WIN_WIDTH;
+  h = on ? CAB_H : WIN_HEIGHT;
+  SDL_RenderSetLogicalSize(renderer, w, h);
+  if (!(SDL_GetWindowFlags(window) & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)))
+    SDL_SetWindowSize(window, w, h);
+  refresh_now = 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -641,10 +687,12 @@ static int process_events(void)
         break;
       case SDLK_v:
       case SDLK_PLUS:
-      case SDLK_VOLUMEUP:
       case SDLK_KP_PLUS:
-        mpc_volume("+3");
-        show_toast("Volume +3", 300);
+      case SDLK_VOLUMEUP:
+        change_volume(+3);
+        break;
+      case SDLK_g:
+        set_cabinet(!cabinet_on);
         break;
       case SDLK_m:
       case SDLK_AUDIOMUTE:
@@ -653,17 +701,56 @@ static int process_events(void)
       case SDLK_MINUS:
       case SDLK_KP_MINUS:
       case SDLK_VOLUMEDOWN:
-        mpc_volume("-3");
-        show_toast("Volume -3", 300);
+        change_volume(-3);
         break;
       default:
         break;
       }
       break;
+    case SDL_MOUSEMOTION:
+      mouse_x = event.motion.x;
+      mouse_y = event.motion.y;
+      continue;  /* no redraw needed */
     case SDL_MOUSEBUTTONUP:
       search_dir = 0;
-      xpos = event.button.x - OFFSET_X;  /* logical coordinates */
+      if (!cabinet_on) {
+        xpos = event.button.x - OFFSET_X;  /* logical coordinates */
+        break;
+      }
+      switch (cabinet_hit(event.button.x, event.button.y)) {
+      case CAB_HIT_DIAL:
+        xpos = event.button.x - CAB_DIAL_X - OFFSET_X;
+        break;
+      case CAB_HIT_VOL_DOWN:
+        change_volume(-3);
+        break;
+      case CAB_HIT_VOL_UP:
+        change_volume(+3);
+        break;
+      case CAB_HIT_TUNE_DOWN:
+        move_tuner(-KEY_STEP);
+        break;
+      case CAB_HIT_TUNE_UP:
+        move_tuner(+KEY_STEP);
+        break;
+      default:
+        break;
+      }
       break;
+    case SDL_MOUSEWHEEL: {
+      int dir = event.wheel.y;
+      int hit = cabinet_on ? cabinet_hit(mouse_x, mouse_y) : CAB_HIT_NONE;
+      if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
+        dir = -dir;
+      if (dir == 0)
+        continue;
+      search_dir = 0;
+      if (hit == CAB_HIT_VOL_DOWN || hit == CAB_HIT_VOL_UP)
+        change_volume(dir > 0 ? +3 : -3);
+      else
+        move_tuner(dir > 0 ? +KEY_STEP : -KEY_STEP);  /* wheel tunes */
+      break;
+    }
     case SDL_QUIT:
       return 0;
     default:
@@ -679,7 +766,7 @@ static int process_events(void)
 /* ------------------------------------------------------------------ */
 
 static char state_file[PATH_MAX + 16];
-static int saved_page = -1, saved_xpos = 0;
+static int saved_page = -1, saved_xpos = 0, saved_cabinet = -1;
 
 /* $XDG_STATE_HOME/retrowebradio/position or ~/.local/state/... */
 static void init_state_file(void)
@@ -705,11 +792,16 @@ static void init_state_file(void)
 static void load_position(void)
 {
   FILE *fp;
-  int page, x;
+  int page, x, cab, n;
 
   if (state_file[0] == '\0' || (fp = fopen(state_file, "r")) == NULL)
     return;
-  if (fscanf(fp, "%d %d", &page, &x) == 2 &&
+  n = fscanf(fp, "%d %d %d", &page, &x, &cab);
+  if (n == 3) {
+    cabinet_on = cab != 0;
+    saved_cabinet = cabinet_on;
+  }
+  if (n >= 2 &&
       page >= 1 && page <= stations.pages &&
       x >= -OFFSET_X && x <= WIN_WIDTH - OFFSET_X) {
     current_page = page;
@@ -725,15 +817,17 @@ static void save_position(void)
   char tmp[PATH_MAX + 24];
   FILE *fp;
 
-  if (state_file[0] == '\0' || (current_page == saved_page && xpos == saved_xpos))
+  if (state_file[0] == '\0' ||
+      (current_page == saved_page && xpos == saved_xpos && cabinet_on == saved_cabinet))
     return;
   snprintf(tmp, sizeof(tmp), "%s.tmp", state_file);
   if ((fp = fopen(tmp, "w")) == NULL)
     return;
-  fprintf(fp, "%d %d\n", current_page, xpos);
+  fprintf(fp, "%d %d %d\n", current_page, xpos, cabinet_on);
   if (fclose(fp) == 0 && rename(tmp, state_file) == 0) {
     saved_page = current_page;
     saved_xpos = xpos;
+    saved_cabinet = cabinet_on;
   }
 }
 
@@ -856,6 +950,8 @@ static void usage(const char *prog)
   fprintf(stderr,
           "usage: %s [-f] [-s stations.xml] [-F font.ttf] [-d seconds]\n"
           "  -f  fullscreen (scaled, aspect ratio kept)\n"
+          "  -g  show the radio cabinet around the dial, -G without\n"
+          "      (default: as last time; toggle with the g key)\n"
           "  -s  station list (default: next to the binary, ./,\n"
           "      ~/.config/retrowebradio/, " DATADIR ")\n"
           "  -F  TrueType font (default: VeraMono.ttf, searched like -s)\n"
@@ -874,14 +970,16 @@ int main(int argc, char *argv[])
   char stations_buf[PATH_MAX + 32], font_buf[PATH_MAX + 32];
   const char *stations_arg = NULL, *font_arg = NULL;
   const char *stations_path, *font_path;
-  int fullscreen = 0, delay = 2, opt, running = 1;
+  int fullscreen = 0, delay = 2, opt, running = 1, force_cabinet = -1;
   uint64_t next_redraw = 0, next_poll = 0, next_save = 0, t;
   int scrolling, presented;
   struct sigaction sa;
 
-  while ((opt = getopt(argc, argv, "fs:F:d:h")) != -1) {
+  while ((opt = getopt(argc, argv, "fgGs:F:d:h")) != -1) {
     switch (opt) {
     case 'f': fullscreen = 1; break;
+    case 'g': force_cabinet = 1; break;
+    case 'G': force_cabinet = 0; break;
     case 's': stations_arg = optarg; break;
     case 'F': font_arg = optarg; break;
     case 'd': delay = atoi(optarg); break;
@@ -923,8 +1021,10 @@ int main(int argc, char *argv[])
 
   if (SDL_Init(SDL_INIT_VIDEO) != 0)
     die("SDL_Init");
+  if (force_cabinet >= 0)
+    cabinet_on = force_cabinet;
   window = SDL_CreateWindow("RetroWebRadio", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                            WIN_WIDTH, WIN_HEIGHT,
+                            cabinet_on ? CAB_W : WIN_WIDTH, cabinet_on ? CAB_H : WIN_HEIGHT,
                             fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
   if (window == NULL)
     die("SDL_CreateWindow");
@@ -943,6 +1043,8 @@ int main(int argc, char *argv[])
   if (renderer == NULL)
     die("SDL_CreateRenderer");
   SDL_RenderSetLogicalSize(renderer, WIN_WIDTH, WIN_HEIGHT);
+  if (cabinet_on)
+    set_cabinet(1);
   texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, WIN_WIDTH, WIN_HEIGHT);
   screen = SDL_CreateRGBSurfaceWithFormat(0, WIN_WIDTH, WIN_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);

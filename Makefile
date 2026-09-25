@@ -17,7 +17,7 @@ CC       ?= gcc
 PKGS      = sdl2 SDL2_ttf libxml-2.0
 CFLAGS   ?= -O2 -g
 CFLAGS   += -Wall -Wextra -std=c99 $(shell pkg-config --cflags $(PKGS))
-LDLIBS   += $(shell pkg-config --libs $(PKGS))
+LDLIBS   += $(shell pkg-config --libs $(PKGS)) -lm
 
 PREFIX    ?= /usr/local
 DATADIR    = $(PREFIX)/share/retrowebradio
@@ -27,10 +27,11 @@ STATIONS_PER_PAGE ?= 20
 
 all: roehre stations.xml
 
-roehre: roehre.o stations.o
+roehre: roehre.o stations.o cabinet.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-roehre.o: roehre.c stations.h radio_icon.h
+roehre.o: roehre.c stations.h radio_icon.h cabinet.h
+cabinet.o: cabinet.c cabinet.h
 stations.o: stations.c stations.h
 
 stations.xml: stationslist.txt stationslist2xml.sh

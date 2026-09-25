@@ -93,12 +93,13 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 ## Usage
 
 ```
-./roehre [-f] [-s stations.xml] [-F font.ttf] [-d seconds]
+./roehre [-f] [-g|-G] [-s stations.xml] [-F font.ttf] [-d seconds]
 ```
 
 | Option | Meaning |
 |--------|---------|
 | `-f` | fullscreen, scaled to the display with the aspect ratio kept |
+| `-g` / `-G` | with / without the radio cabinet (default: as last time) |
 | `-s` | station list; default: next to the binary, `./`, `~/.config/retrowebradio/`, `PREFIX/share/retrowebradio` |
 | `-F` | TrueType font, searched like `-s` (default `VeraMono.ttf`) |
 | `-d` | startup delay in seconds (default 2, avoids starting behind the taskbar at boot) |
@@ -111,6 +112,8 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | v, +, keypad +, volume-up key | volume +3 |
 | -, keypad -, volume-down key | volume -3 |
 | m, mute key | mute / unmute (restores the previous volume) |
+| g | radio cabinet on/off |
+| mouse wheel | tune (over the volume knob: volume) |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
 
@@ -118,6 +121,17 @@ The dial position (page and tuner) is saved in `~/.local/state/retrowebradio/pos
 and restored on the next start, so the radio comes back on the last station. If mpd is
 already playing that station, it is taken over without re-tuning (no gap).
 `SIGUSR1` shows, `SIGUSR2` hides and `SIGRTMIN` toggles the window (used by the tray icon).
+
+## Radio cabinet
+
+Optionally the dial sits in a tube radio case like the icon (key `g` or `-g`; the
+choice is remembered):
+
+<img src="cabinet.png" width=60%>
+
+The left knob sets the volume, the right one tunes: click its left or right half,
+or use the mouse wheel over it. The knob markers show the current volume and the
+position on the dial across all pages.
 
 ## Tray icon
 
