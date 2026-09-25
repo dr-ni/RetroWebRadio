@@ -125,14 +125,15 @@ already playing that station, it is taken over without re-tuning (no gap).
 
 ## Radio cabinet
 
-Optionally the dial sits in a tube radio case like the icon (key `g` or `-g`; the
-choice is remembered):
+Optionally the dial sits in a 1930s style tube radio case: walnut with an arched top,
+Art Deco sunburst, brass trim and Bakelite push buttons (key `g` or `-g`; the choice
+is remembered):
 
 <img src="cabinet.png" width=50%>
 
-Piano keys below the dial, left to right: volume +, play/pause, volume −,
-scan right, next page, previous page, scan left. Play/pause stays pressed down
-while mpd is paused. The mouse wheel tunes.
+Push buttons below the dial, left to right: volume +, play/pause, volume −,
+scan left, next page, previous page, scan right. Play/pause stays pressed down
+while the radio plays. The mouse wheel tunes.
 
 ## Tray icon
 

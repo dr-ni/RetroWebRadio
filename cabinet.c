@@ -2,10 +2,11 @@
 /*
  * RetroWebRadio - optional radio cabinet around the dial
  *
- * A tube radio case in the style of the icon: wooden body, the dial
- * behind a cream bezel and a row of ivory piano-key buttons below it:
+ * A 1930s style tube radio: walnut "tombstone" case with an arched top
+ * and an Art Deco sunburst, brass trim, the dial behind a brass bezel and
+ * a row of Bakelite push buttons below it:
  *
- *   [Vol +] [Play/Pause] [Vol -]   [>>] [^] [v] [<<]
+ *   [Vol +] [Play/Pause] [Vol -]   [<<] [^] [v] [>>]
  *
  * The case and the keys (normal and pressed) are rendered once with
  * anti-aliased shapes into textures; per frame only textures are copied.
@@ -16,15 +17,20 @@
 #include <stdint.h>
 #include "cabinet.h"
 
-#define BODY_COL   0xc8782a
-#define EDGE_COL   0x4a2a0e
-#define DARK_COL   0x3b2410
-#define CREAM_COL  0xf3e3a8
-#define IVORY_COL  0xefe4c8
-#define IVORY_DN   0xd9ccab
-#define SYMBOL_COL 0x3b2410
+#define WOOD_COL   0x5a2d14   /* walnut */
+#define WOOD_DARK  0x3a1a0a
+#define WOOD_LIGHT 0x8a4a22
+#define EDGE_COL   0x24100a
+#define BRASS_COL  0xc9a34a
+#define BRASS_DARK 0x7a5a1e
+#define BRASS_LITE 0xf0d98a
+#define KEY_COL    0x3a2012   /* brown Bakelite */
+#define KEY_DN     0x26140a
+#define SYMBOL_COL 0xefe0b8   /* cream inlay */
+#define SYMBOL_DN  0xcdbd95
 #define OUTSIDE    0x141414
 
+#define ARCH_H     70         /* height of the arched top above the body */
 #define BODY_BOTTOM (CAB_H - 26)
 #define SLOT_X0    (CAB_DIAL_X - 12)
 #define SLOT_X1    (CAB_DIAL_X + 644 + 12)
@@ -117,47 +123,89 @@ static void tri(SDL_Surface *s, double ax, double ay, double bx, double by,
 
 static void key_rect(int k, int *x, int *y)
 {
-  int group = k >= CAB_KEY_RIGHT;
+  int group = k >= CAB_KEY_LEFT;  /* second group: tuning */
   int total = CAB_KEYS * KEY_W + (CAB_KEYS - 2) * KEY_GAP + GROUP_GAP;
   *x = (SLOT_X0 + SLOT_X1 - total) / 2 + k * (KEY_W + KEY_GAP) + group * (GROUP_GAP - KEY_GAP);
   *y = SLOT_Y0 + (SLOT_Y1 - SLOT_Y0 - KEY_H) / 2 - 2;
 }
 
+/* distance to the case outline: straight body with an arched top */
+static double sd_case(double px, double py)
+{
+  double w = CAB_W - 8, cx = CAB_W / 2.0, top = 4, base = top + ARCH_H;
+  double R = (w * w / 4 + ARCH_H * ARCH_H) / (2.0 * ARCH_H);   /* arch radius */
+  double body = sd_rrect(px, py, 4, base - 30, CAB_W - 4, BODY_BOTTOM, 30);
+  double arch = hypot(px - cx, py - (top + R)) - R;
+  double cut = py - (base + 10);           /* keep the arch above the body */
+  double a = arch > cut ? arch : cut;
+  return body < a ? body : a;
+}
+
 static SDL_Surface *draw_case(void)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, CAB_W, CAB_H, 32, SDL_PIXELFORMAT_ARGB8888);
-  int x, y;
+  int x, y, i;
+  double cx = CAB_W / 2.0;
 
   if (s == NULL)
     return NULL;
   SDL_FillRect(s, NULL, 0xff000000u | OUTSIDE);
 
-  /* feet */
-  rrect(s, 70, BODY_BOTTOM - 20, 160, CAB_H - 4, 8, DARK_COL, 0, 0);
-  rrect(s, CAB_W - 160, BODY_BOTTOM - 20, CAB_W - 70, CAB_H - 4, 8, DARK_COL, 0, 0);
+  /* brass ball feet */
+  rrect(s, 60, BODY_BOTTOM - 20, 150, CAB_H - 4, 10, BRASS_DARK, 0, 0);
+  rrect(s, CAB_W - 150, BODY_BOTTOM - 20, CAB_W - 60, CAB_H - 4, 10, BRASS_DARK, 0, 0);
 
-  /* wooden body with a subtle grain */
-  rrect(s, 4, 4, CAB_W - 4, BODY_BOTTOM, 40, BODY_COL, 6, EDGE_COL);
-  for (y = 12; y < BODY_BOTTOM - 8; y++)
-    for (x = 12; x < CAB_W - 12; x++) {
-      double inside = -sd_rrect(x + 0.5, y + 0.5, 4, 4, CAB_W - 4, BODY_BOTTOM, 40) - 7;
-      double grain = sin(y * 0.21 + sin(x * 0.013) * 2.5 + sin(x * 0.051) * 0.6);
-      if (inside > 0)
-        blend(s, x, y, grain > 0 ? 0xa05a18 : 0xe09040,
-              (inside > 2 ? 1 : inside / 2) * 0.10 * fabs(grain));
+  /* walnut case with grain, dark edge */
+  for (y = 0; y < CAB_H; y++)
+    for (x = 0; x < CAB_W; x++) {
+      double d = sd_case(x + 0.5, y + 0.5);
+      double grain, cov;
+      uint32_t col;
+      if (d > 1)
+        continue;
+      cov = 0.5 - d;
+      /* slow figure plus fine pores, kept subtle */
+      grain = sin(x * 0.028 + sin(y * 0.009) * 2.2 + sin(y * 0.031 + x * 0.003) * 0.6);
+      grain += 0.25 * sin(x * 0.19 + sin(y * 0.05) * 1.5);
+      col = grain > 0 ? WOOD_LIGHT : WOOD_DARK;
+      blend(s, x, y, WOOD_COL, cov);
+      blend(s, x, y, col, cov * (grain > 0 ? 0.16 : 0.22) * fabs(grain));
+      if (d > -6)                                  /* rim */
+        blend(s, x, y, EDGE_COL, cov * (d > -4 ? 1 : (d + 6) / 2));
     }
 
-  /* bezel around the dial */
-  rrect(s, CAB_DIAL_X - 12, CAB_DIAL_Y - 12, CAB_DIAL_X + 644 + 12, CAB_DIAL_Y + 428 + 12,
-        10, CREAM_COL, 3, EDGE_COL);
+  /* brass pinstripe following the outline */
+  for (y = 0; y < CAB_H; y++)
+    for (x = 0; x < CAB_W; x++) {
+      double d = sd_case(x + 0.5, y + 0.5) + 16;   /* 16 px inside */
+      if (fabs(d) < 2)
+        blend(s, x, y, BRASS_COL, 0.5 - (fabs(d) - 1));
+    }
 
-  /* recessed slot for the keys */
-  rrect(s, SLOT_X0, SLOT_Y0, SLOT_X1, SLOT_Y1, 10, 0x1e1208, 3, EDGE_COL);
+  /* Art Deco sunburst in the arch */
+  for (i = -6; i <= 6; i++) {
+    double a = i * 12 * M_PI / 180, len = 82 - abs(i) * 6;
+    double ox = cx, oy = CAB_DIAL_Y - 14;
+    tri(s, ox - 4, oy, ox + 4, oy, ox + sin(a) * len, oy - cos(a) * len,
+        i % 2 ? BRASS_DARK : BRASS_COL);
+  }
+  rrect(s, cx - 14, CAB_DIAL_Y - 28, cx + 14, CAB_DIAL_Y - 14 + 14, 14, BRASS_COL, 2, BRASS_DARK);
+
+  /* brass bezel around the dial, rounded top */
+  rrect(s, CAB_DIAL_X - 14, CAB_DIAL_Y - 14, CAB_DIAL_X + 644 + 14, CAB_DIAL_Y + 428 + 14,
+        16, BRASS_COL, 2, BRASS_DARK);
+  rrect(s, CAB_DIAL_X - 10, CAB_DIAL_Y - 12, CAB_DIAL_X + 644 + 10, CAB_DIAL_Y - 7,
+        3, BRASS_LITE, 0, 0);
+  rrect(s, CAB_DIAL_X - 4, CAB_DIAL_Y - 4, CAB_DIAL_X + 644 + 4, CAB_DIAL_Y + 428 + 4,
+        6, BRASS_DARK, 0, 0);
+
+  /* recessed slot for the keys, brass framed */
+  rrect(s, SLOT_X0, SLOT_Y0, SLOT_X1, SLOT_Y1, 10, 0x140a05, 3, BRASS_COL);
   return s;
 }
 
 /* symbol of key k, centred at cx,cy */
-static void draw_symbol(SDL_Surface *s, int k, double cx, double cy)
+static void draw_symbol(SDL_Surface *s, int k, double cx, double cy, uint32_t col)
 {
   double t = 9;  /* half size of arrows */
 
@@ -165,51 +213,52 @@ static void draw_symbol(SDL_Surface *s, int k, double cx, double cy)
   case CAB_KEY_VOLUP:
   case CAB_KEY_VOLDOWN:
     /* speaker + plus/minus */
-    rrect(s, cx - 17, cy - 5, cx - 11, cy + 5, 1, SYMBOL_COL, 0, 0);
-    tri(s, cx - 12, cy - 5, cx - 3, cy - 12, cx - 3, cy + 12, SYMBOL_COL);
-    tri(s, cx - 12, cy + 5, cx - 3, cy + 12, cx - 12, cy - 5, SYMBOL_COL);
-    rrect(s, cx + 3, cy - 1.8, cx + 17, cy + 1.8, 1, SYMBOL_COL, 0, 0);
+    rrect(s, cx - 17, cy - 5, cx - 11, cy + 5, 1, col, 0, 0);
+    tri(s, cx - 12, cy - 5, cx - 3, cy - 12, cx - 3, cy + 12, col);
+    tri(s, cx - 12, cy + 5, cx - 3, cy + 12, cx - 12, cy - 5, col);
+    rrect(s, cx + 3, cy - 1.8, cx + 17, cy + 1.8, 1, col, 0, 0);
     if (k == CAB_KEY_VOLUP)
-      rrect(s, cx + 8.2, cy - 7, cx + 11.8, cy + 7, 1, SYMBOL_COL, 0, 0);
+      rrect(s, cx + 8.2, cy - 7, cx + 11.8, cy + 7, 1, col, 0, 0);
     break;
   case CAB_KEY_PLAY:
-    tri(s, cx - 15, cy - 10, cx - 15, cy + 10, cx - 1, cy, SYMBOL_COL);
-    rrect(s, cx + 4, cy - 10, cx + 8, cy + 10, 1, SYMBOL_COL, 0, 0);
-    rrect(s, cx + 12, cy - 10, cx + 16, cy + 10, 1, SYMBOL_COL, 0, 0);
+    tri(s, cx - 15, cy - 10, cx - 15, cy + 10, cx - 1, cy, col);
+    rrect(s, cx + 4, cy - 10, cx + 8, cy + 10, 1, col, 0, 0);
+    rrect(s, cx + 12, cy - 10, cx + 16, cy + 10, 1, col, 0, 0);
     break;
   case CAB_KEY_RIGHT:  /* scan right: >> */
-    tri(s, cx - 12, cy - t, cx - 12, cy + t, cx, cy, SYMBOL_COL);
-    tri(s, cx, cy - t, cx, cy + t, cx + 12, cy, SYMBOL_COL);
+    tri(s, cx - 12, cy - t, cx - 12, cy + t, cx, cy, col);
+    tri(s, cx, cy - t, cx, cy + t, cx + 12, cy, col);
     break;
   case CAB_KEY_LEFT:   /* scan left: << */
-    tri(s, cx + 12, cy - t, cx + 12, cy + t, cx, cy, SYMBOL_COL);
-    tri(s, cx, cy - t, cx, cy + t, cx - 12, cy, SYMBOL_COL);
+    tri(s, cx + 12, cy - t, cx + 12, cy + t, cx, cy, col);
+    tri(s, cx, cy - t, cx, cy + t, cx - 12, cy, col);
     break;
   case CAB_KEY_UP:     /* next page */
-    tri(s, cx - 11, cy + 6, cx + 11, cy + 6, cx, cy - 8, SYMBOL_COL);
+    tri(s, cx - 11, cy + 6, cx + 11, cy + 6, cx, cy - 8, col);
     break;
   case CAB_KEY_DOWN:   /* previous page */
-    tri(s, cx - 11, cy - 6, cx + 11, cy - 6, cx, cy + 8, SYMBOL_COL);
+    tri(s, cx - 11, cy - 6, cx + 11, cy - 6, cx, cy + 8, col);
     break;
   }
 }
 
-/* one key, 'down' = pressed look; surface is transparent around it */
+/* one Bakelite key with brass rim; 'down' = pressed look */
 static SDL_Surface *draw_key(int k, int down)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, KEY_W, KEY_H + PRESS_DY, 32,
                                                   SDL_PIXELFORMAT_ARGB8888);
   double dy = down ? PRESS_DY : 0;
+  double bottom = KEY_H - 6 + dy + (down ? 3 : 0);
 
   if (s == NULL)
     return NULL;
   SDL_FillRect(s, NULL, 0);
-  /* side / shadow, then the key face with a light top edge */
-  rrect(s, 0, dy + 4, KEY_W, KEY_H + dy, 7, down ? 0x8e8065 : 0xa89878, 0, 0);
-  rrect(s, 0, dy, KEY_W, KEY_H - 6 + dy + (down ? 3 : 0), 7,
-        down ? IVORY_DN : IVORY_COL, 1.5, 0x7a6a4e);
-  rrect(s, 4, dy + 2, KEY_W - 4, dy + 7, 3, down ? 0xe4d8ba : 0xfbf5e6, 0, 0);
-  draw_symbol(s, k, KEY_W / 2.0, (KEY_H - 6) / 2.0 + dy + 1);
+  /* side (depth), face with brass rim, glossy highlight */
+  rrect(s, 0, dy + 4, KEY_W, KEY_H + dy, 9, down ? 0x160b05 : 0x1c0e06, 0, 0);
+  rrect(s, 0, dy, KEY_W, bottom, 9, down ? KEY_DN : KEY_COL, 2, down ? BRASS_DARK : BRASS_COL);
+  rrect(s, 6, dy + 4, KEY_W - 6, dy + 12, 4, down ? 0x3a2414 : 0x6e4428, 0, 0);
+  rrect(s, 10, dy + 5, KEY_W / 2.0, dy + 8, 2, down ? 0x4a3020 : 0x9a6a44, 0, 0);
+  draw_symbol(s, k, KEY_W / 2.0, (KEY_H - 6) / 2.0 + dy + 2, down ? SYMBOL_DN : SYMBOL_COL);
   return s;
 }
 

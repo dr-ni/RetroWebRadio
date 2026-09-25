@@ -9,14 +9,14 @@
 
 /* logical size of the whole cabinet and position of the 644x428 dial */
 #define CAB_W      724
-#define CAB_H      646
+#define CAB_H      716
 #define CAB_DIAL_X 40
-#define CAB_DIAL_Y 40
+#define CAB_DIAL_Y 110
 
 /* piano keys below the dial, left to right */
 enum {
   CAB_KEY_VOLUP, CAB_KEY_PLAY, CAB_KEY_VOLDOWN,
-  CAB_KEY_RIGHT, CAB_KEY_UP, CAB_KEY_DOWN, CAB_KEY_LEFT,
+  CAB_KEY_LEFT, CAB_KEY_UP, CAB_KEY_DOWN, CAB_KEY_RIGHT,
   CAB_KEYS
 };
 
@@ -27,7 +27,7 @@ enum { CAB_HIT_NONE = -2, CAB_HIT_DIAL = -1, CAB_HIT_KEY = 0 };
 int cabinet_init(SDL_Renderer *r);
 
 /* case, dial texture and keys; 'pressed' key (or -1) and 'latched' keys
-   (bit mask, e.g. play/pause while paused) are drawn pressed down */
+   (bit mask, e.g. play/pause while playing) are drawn pressed down */
 void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned latched);
 
 /* what is at logical position x,y */

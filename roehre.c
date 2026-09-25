@@ -447,7 +447,7 @@ static void get_current_track(void)
       if (line[0] == '[') {   /* "[playing] #1/1 ..." or "[paused] ..." */
         int p = strncmp(line, "[paused]", 8) == 0;
         if (p != cur_paused) {
-          cur_paused = p;     /* latches the play/pause key of the cabinet */
+          cur_paused = p;     /* releases the latched play key of the cabinet */
           refresh_now = 1;
         }
       }
@@ -611,8 +611,8 @@ static void draw_everything(int full)
                       (Uint8 *)screen->pixels + strip.y * screen->pitch, screen->pitch);
   SDL_RenderClear(renderer);
   if (cabinet_on)
-    cabinet_render(renderer, texture, pressed_key,
-                   cur_paused ? 1u << CAB_KEY_PLAY : 0);
+    cabinet_render(renderer, texture, pressed_key,   /* play latched while playing */
+                   current_playing_url[0] != '\0' && !cur_paused ? 1u << CAB_KEY_PLAY : 0);
   else
     SDL_RenderCopy(renderer, texture, NULL, NULL);
   SDL_RenderPresent(renderer);
