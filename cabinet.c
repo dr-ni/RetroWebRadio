@@ -5,9 +5,9 @@
  * A post-war table radio in the style of around 1950: box-shaped walnut
  * case with rounded top edges, a wide light veneer frame around a darker
  * front panel holding the dial, a figured lower panel with a row of small
- * ivory push buttons with printed labels, a pilot lamp on the left, a
- * magic eye tuning indicator on the right and two Bakelite knobs that
- * work as step buttons (left / right, repeating while held).
+ * ivory push buttons with printed labels, a neon pilot lamp and two
+ * Bakelite knobs that work as step buttons (left / right, repeating while
+ * held). The magic eye (eye_init / eye_render) sits in the dial.
  *
  *   (knob) (lamp) [Spielen][Lauter][Leiser][<<Suche][Band+][Band-][Suche>>] (eye) (knob)
  *
@@ -43,7 +43,6 @@
 #define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 30)
 #define LAMP_Y      (KEYS_Y + KEY_H / 2)
 #define LAMP_R      12
-#define EYE_X       (CAB_W - LAMP_X + 8)
 #define EYE_R       22
 #define EYE_STEPS   24                        /* pre-rendered shadow widths */
 #define KNOB_R      30
@@ -381,16 +380,9 @@ static SDL_Surface *draw_case(void)
     rrect(s, kx - 6, ky - 6, kx2 + KEY_W + 6, ky + KEY_H + 8, 5, 0x100804, 1.5, 0x3a2412);
   }
 
-  /* lamp socket and the metal ring of the magic eye */
+  /* lamp socket */
   rrect(s, LAMP_X - LAMP_R - 4, LAMP_Y - LAMP_R - 4, LAMP_X + LAMP_R + 4, LAMP_Y + LAMP_R + 4,
         LAMP_R + 4, 0x1a0d06, 2.5, 0x6a4a28);
-  for (y = LAMP_Y - EYE_R - 6; y <= LAMP_Y + EYE_R + 6; y++)
-    for (x = EYE_X - EYE_R - 6; x <= EYE_X + EYE_R + 6; x++) {
-      double r = hypot(x + 0.5 - EYE_X, y + 0.5 - LAMP_Y);
-      double t = 1.15 - 0.5 * (y + 0.5 - LAMP_Y + EYE_R) / (2.0 * EYE_R);
-      if (r < EYE_R + 5)
-        blend(s, x, y, rgbf(150 * t, 140 * t, 120 * t), EYE_R + 5 - r > 1 ? 1 : EYE_R + 5 - r);
-    }
   return s;
 }
 
@@ -462,33 +454,43 @@ static SDL_Surface *draw_knob(int k, int down)
   return s;
 }
 
-/* pilot lamp glass: 0 dark, 1 warm light, 2 red */
+/*
+ * Pilot lamp as a neon glow lamp: a small glass bulb with two electrode
+ * plates. state 0: off (grey glass, dark plates), 1: orange neon glow
+ * around the plates, 2: red (muted).
+ */
 static SDL_Surface *draw_lamp(int state)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, LAMP_S, LAMP_S, 32, SDL_PIXELFORMAT_ARGB8888);
   double c = LAMP_S / 2.0;
   int x, y;
+  uint32_t neon = state == 2 ? 0xff2a12 : 0xff7424;
 
   if (s == NULL)
     return NULL;
   SDL_FillRect(s, NULL, 0);
   for (y = 0; y < LAMP_S; y++)
     for (x = 0; x < LAMP_S; x++) {
-      double r = hypot(x + 0.5 - c, y + 0.5 - c), g = 1 - r / (LAMP_R + 0.5);
-      uint32_t col;
-      if (state == 1)
-        blend(s, x, y, 0xff9030, 0.40 * exp(-pow(r / (LAMP_R * 1.5), 2)));   /* glow */
-      else if (state == 2)
-        blend(s, x, y, 0xff2010, 0.40 * exp(-pow(r / (LAMP_R * 1.5), 2)));
+      double dx = x + 0.5 - c, dy = y + 0.5 - c, r = hypot(dx, dy);
+      double e1 = hypot(fmax(fabs(dx + 3.5) - 1.2, 0), fmax(fabs(dy) - 6, 0));  /* plates */
+      double e2 = hypot(fmax(fabs(dx - 3.5) - 1.2, 0), fmax(fabs(dy) - 6, 0));
+      double e = fmin(e1, e2), a = LAMP_R - r > 1 ? 1 : LAMP_R - r;
+
+      if (state)                                                 /* halo outside */
+        blend(s, x, y, neon, 0.50 * exp(-pow(r / (LAMP_R * 1.7), 2)));
       if (r >= LAMP_R)
         continue;
-      col = state == 1 ? rgbf(255, 120 + 120 * g, 40 + 140 * g * g)
-          : state == 2 ? rgbf(255, 40 + 150 * g * g, 20 + 110 * g * g)
-          : rgbf(80 + 40 * g, 28 + 14 * g, 14 + 6 * g);
-      blend(s, x, y, col, LAMP_R - r > 1 ? 1 : LAMP_R - r);
-      /* small reflection on the glass */
-      if (hypot(x + 0.5 - (c - 4), y + 0.5 - (c - 4)) < 2.5)
-        blend(s, x, y, 0xffffff, state ? 0.5 : 0.35);
+      blend(s, x, y, state ? 0x6a2a10 : 0x2c2826, a * 0.92);       /* glass */
+      if (state) {                                               /* glow cloud */
+        blend(s, x, y, neon, a * exp(-e / 3.6));
+        blend(s, x, y, 0xffc890, a * 0.75 * exp(-e / 1.3));      /* hot core */
+      } else if (e < 0.8) {
+        blend(s, x, y, 0x6a6460, a * (0.8 - e));                 /* bare plates */
+      }
+      if (r > LAMP_R - 2)                                        /* glass rim */
+        blend(s, x, y, 0x9a948c, a * 0.35);
+      if (hypot(dx + 4, dy + 5) < 2.2)                           /* reflection */
+        blend(s, x, y, 0xffffff, 0.45);
     }
   return s;
 }
@@ -514,6 +516,10 @@ static SDL_Surface *draw_eye(double open)
       double deg = fabs(atan2(dx, -dy)) * 180 / M_PI;   /* 0 = up, 180 = down */
       double off = deg < 90 ? deg : 180 - deg;           /* distance to the axis */
       double edge, glow, a;
+      if (r > EYE_R && r < EYE_R + 4) {                  /* chrome bezel */
+        double t = 1.1 - 0.5 * (dy + EYE_R) / (2.0 * EYE_R);
+        blend(s, x, y, rgbf(170 * t, 165 * t, 150 * t), EYE_R + 4 - r > 1 ? 1 : EYE_R + 4 - r);
+      }
       if (r > EYE_R)
         continue;
       a = EYE_R - r > 1 ? 1 : EYE_R - r;
@@ -598,28 +604,25 @@ int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_p
   for (k = 0; k < 2; k++)
     for (d = 0; d < 2; d++)
       knob_tex[k][d] = to_texture(r, draw_knob(k, d));
-  for (k = 0; k <= EYE_STEPS; k++)
-    eye_tex[k] = to_texture(r, draw_eye((double)k / EYE_STEPS));
   return cab_tex != NULL ? 0 : -1;
 }
 
 void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned latched,
-                    int lamp, double eye_open)
+                    int lamp, double lamp_glow)
 {
   SDL_Rect dst = { CAB_DIAL_X, CAB_DIAL_Y, 644, 428 };
   SDL_Rect lr = { LAMP_X - LAMP_S / 2, LAMP_Y - LAMP_S / 2, LAMP_S, LAMP_S };
-  SDL_Rect er = { EYE_X - EYE_S / 2, LAMP_Y - EYE_S / 2, EYE_S, EYE_S };
-  int k, e;
+  int k;
 
   SDL_RenderCopy(r, cab_tex, NULL, NULL);
   SDL_RenderCopy(r, dial, NULL, &dst);
   if (lamp < 0 || lamp > 2)
     lamp = 0;
-  if (lamp_tex[lamp] != NULL)
+  if (lamp_tex[lamp] != NULL) {
+    Uint8 g = (Uint8)(255 * (lamp ? (lamp_glow > 1 ? 1 : lamp_glow) : 1));
+    SDL_SetTextureColorMod(lamp_tex[lamp], g, g, g);   /* neon flicker */
     SDL_RenderCopy(r, lamp_tex[lamp], NULL, &lr);
-  e = (int)lround((eye_open < 0 ? 0 : eye_open > 1 ? 1 : eye_open) * EYE_STEPS);
-  if (eye_tex[e] != NULL)
-    SDL_RenderCopy(r, eye_tex[e], NULL, &er);
+  }
   for (k = 0; k < 2; k++) {
     SDL_Rect kr = { KNOB_X(k) - KNOB_S / 2, KNOB_Y - KNOB_S / 2 + 3, KNOB_S, KNOB_S };
     int down = pressed == (k ? CAB_HIT_KNOB_RIGHT : CAB_HIT_KNOB_LEFT);
@@ -650,6 +653,29 @@ SDL_Surface *cabinet_mask(void)
       ((uint32_t *)((uint8_t *)m->pixels + y * m->pitch))[x] = in ? 0xff000000u : 0;
     }
   return m;
+}
+
+int eye_init(SDL_Renderer *r)
+{
+  int k;
+
+  if (eye_tex[0] != NULL)
+    return 0;
+  for (k = 0; k <= EYE_STEPS; k++)
+    eye_tex[k] = to_texture(r, draw_eye((double)k / EYE_STEPS));
+  return eye_tex[0] != NULL ? 0 : -1;
+}
+
+void eye_render(SDL_Renderer *r, int cx, int cy, double open, double glow)
+{
+  SDL_Rect er = { cx - EYE_S / 2, cy - EYE_S / 2, EYE_S, EYE_S };
+  int e = (int)lround((open < 0 ? 0 : open > 1 ? 1 : open) * EYE_STEPS);
+  Uint8 g = (Uint8)(255 * (glow < 0 ? 0 : glow > 1 ? 1 : glow));
+
+  if (eye_tex[e] == NULL)
+    return;
+  SDL_SetTextureColorMod(eye_tex[e], g, g, g);
+  SDL_RenderCopy(r, eye_tex[e], NULL, &er);
 }
 
 int cabinet_hit(int x, int y)

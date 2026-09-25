@@ -75,6 +75,7 @@
 #define TUNE_DELAY_MS 1000  // station must stay tuned this long before it plays
 #define SCAN_STEP 2         // px per tick while auto-scanning
 #define KEY_STEP 5          // px per cursor key press
+#define FLICKER_MS 50       // magic eye / neon lamp flicker frame rate
 #define NOISE_LEVEL 0.35    // static at full volume when fully detuned
 #define KNOB_DELAY_MS 400   // cabinet knob held: repeat after ...
 #define KNOB_REPEAT_MS 50   // ... one step every ...
@@ -526,13 +527,13 @@ static void draw_grid(void)
 {
   int x;
   for (x = 0; x < WIN_WIDTH; x += GRID_STEP)
-    fill(x, 0, 1, WIN_HEIGHT, 0x00, 0x44, 0x00);
+    fill(x, 0, 1, WIN_HEIGHT, 0x06, 0x3a, 0x1e);
 }
 
 static void draw_stations(void)
 {
-  const SDL_Color normal = { 149, 207, 50, 255 };
-  const SDL_Color highlight = { 255, 255, 155, 255 };
+  const SDL_Color normal = { 120, 238, 172, 255 };     /* backlit mint green */
+  const SDL_Color highlight = { 255, 250, 205, 255 };
   const struct page *p = page_now();
   int i, w, h;
 
@@ -548,10 +549,124 @@ static void draw_stations(void)
   }
 }
 
-/* draw the tuner (that red bar) */
+/* alpha-blend a rectangle onto the target (ARGB8888) */
+static void blend_rect(int x0, int y0, int w, int h, int r, int g, int b, double a)
+{
+  int x, y;
+  for (y = y0 < 0 ? 0 : y0; y < y0 + h && y < target->h; y++) {
+    Uint32 *row = (Uint32 *)((Uint8 *)target->pixels + y * target->pitch);
+    for (x = x0 < 0 ? 0 : x0; x < x0 + w && x < target->w; x++) {
+      Uint32 p = row[x];
+      int pr = (p >> 16) & 0xff, pg = (p >> 8) & 0xff, pb = p & 0xff;
+      row[x] = 0xff000000u | (Uint32)((int)(pr + (r - pr) * a) << 16) |
+               (Uint32)((int)(pg + (g - pg) * a) << 8) | (Uint32)(int)(pb + (b - pb) * a);
+    }
+  }
+}
+
+/* the tuner: a translucent, glowing orange bar with a bright core */
 static void draw_tuner(void)
 {
-  fill(tuner_x(), OFFSET_Y, 4, VISIBLE_HEIGHT, 0xff, 0x77, 0x00);
+  int x = tuner_x() + 2;
+  blend_rect(x - 10, OFFSET_Y, 20, VISIBLE_HEIGHT, 255, 55, 10, 0.40);   /* glass bar */
+  blend_rect(x - 6, OFFSET_Y, 12, VISIBLE_HEIGHT, 255, 85, 25, 0.35);
+  blend_rect(x - 10, OFFSET_Y, 2, VISIBLE_HEIGHT, 255, 130, 60, 0.45);   /* lit edges */
+  blend_rect(x + 8, OFFSET_Y, 2, VISIBLE_HEIGHT, 255, 130, 60, 0.45);
+  blend_rect(x - 1, OFFSET_Y, 2, VISIBLE_HEIGHT, 255, 180, 120, 0.55);
+}
+
+/*
+ * Backlight: a faint glow behind the glass, and a bloom that lets the
+ * lettering, lines and tuner shine like a lit dial. The bloom is a blur of
+ * the drawing at quarter resolution, added back on top.
+ */
+static SDL_Surface *backplate;
+
+static void make_backplate(void)
+{
+  int x, y;
+
+  backplate = SDL_CreateRGBSurfaceWithFormat(0, WIN_WIDTH, WIN_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);
+  if (backplate == NULL)
+    return;
+  for (y = 0; y < WIN_HEIGHT; y++) {
+    Uint32 *row = (Uint32 *)((Uint8 *)backplate->pixels + y * backplate->pitch);
+    for (x = 0; x < WIN_WIDTH; x++) {
+      double dx = (x - WIN_WIDTH / 2.0) / (WIN_WIDTH * 0.55);
+      double dy = (y - WIN_HEIGHT * 0.45) / (WIN_HEIGHT * 0.6);
+      double g = exp(-(dx * dx + dy * dy));
+      row[x] = 0xff000000u | (Uint32)((int)(2 * g) << 16) | (Uint32)((int)(20 * g) << 8) |
+               (Uint32)(int)(12 * g);
+    }
+  }
+}
+
+static void bloom(SDL_Surface *s)
+{
+  enum { F = 4 };
+  int sw = s->w / F, sh = s->h / F, x, y, c, pass, i;
+  float *a = malloc(sizeof(float) * 3 * sw * sh), *t = malloc(sizeof(float) * 3 * sw * sh);
+
+  if (a == NULL || t == NULL) {
+    free(a);
+    free(t);
+    return;
+  }
+  for (y = 0; y < sh; y++)          /* downsample */
+    for (x = 0; x < sw; x++)
+      for (c = 0; c < 3; c++) {
+        float sum = 0;
+        int u, v;
+        for (v = 0; v < F; v++)
+          for (u = 0; u < F; u++) {
+            Uint32 p = ((Uint32 *)((Uint8 *)s->pixels + (y * F + v) * s->pitch))[x * F + u];
+            sum += (p >> (16 - 8 * c)) & 0xff;
+          }
+        a[(y * sw + x) * 3 + c] = sum / (F * F);
+      }
+  for (pass = 0; pass < 2; pass++) {  /* box blur, radius 2, twice */
+    for (y = 0; y < sh; y++)
+      for (x = 0; x < sw; x++)
+        for (c = 0; c < 3; c++) {
+          float sum = 0;
+          for (i = -2; i <= 2; i++) {
+            int xx = x + i < 0 ? 0 : x + i >= sw ? sw - 1 : x + i;
+            sum += a[(y * sw + xx) * 3 + c];
+          }
+          t[(y * sw + x) * 3 + c] = sum / 5;
+        }
+    for (y = 0; y < sh; y++)
+      for (x = 0; x < sw; x++)
+        for (c = 0; c < 3; c++) {
+          float sum = 0;
+          for (i = -2; i <= 2; i++) {
+            int yy = y + i < 0 ? 0 : y + i >= sh ? sh - 1 : y + i;
+            sum += t[(yy * sw + x) * 3 + c];
+          }
+          a[(y * sw + x) * 3 + c] = sum / 5;
+        }
+  }
+  for (y = 0; y < s->h; y++) {      /* add back, bilinear */
+    Uint32 *row = (Uint32 *)((Uint8 *)s->pixels + y * s->pitch);
+    float fy = (y + 0.5f) / F - 0.5f;
+    int y0 = fy < 0 ? 0 : (int)fy, y1 = y0 + 1 < sh ? y0 + 1 : y0;
+    float wy = fy - y0 < 0 ? 0 : fy - y0;
+    for (x = 0; x < s->w; x++) {
+      float fx = (x + 0.5f) / F - 0.5f;
+      int x0 = fx < 0 ? 0 : (int)fx, x1 = x0 + 1 < sw ? x0 + 1 : x0;
+      float wx = fx - x0 < 0 ? 0 : fx - x0;
+      Uint32 p = row[x], out = 0xff000000u;
+      for (c = 0; c < 3; c++) {
+        float g = (a[(y0 * sw + x0) * 3 + c] * (1 - wx) + a[(y0 * sw + x1) * 3 + c] * wx) * (1 - wy) +
+                  (a[(y1 * sw + x0) * 3 + c] * (1 - wx) + a[(y1 * sw + x1) * 3 + c] * wx) * wy;
+        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 1.1f * g);
+        out |= (Uint32)(v > 255 ? 255 : v) << (16 - 8 * c);
+      }
+      row[x] = out;
+    }
+  }
+  free(a);
+  free(t);
 }
 
 /*
@@ -616,6 +731,7 @@ static void draw_current_track(void)
  */
 static int lamp_state(void);
 static double eye_opening(void);
+static void present(void);
 
 static void draw_everything(int full)
 {
@@ -623,10 +739,16 @@ static void draw_everything(int full)
 
   if (full) {
     target = background;
-    SDL_FillRect(background, NULL, SDL_MapRGB(background->format, 0, 0, 0));
+    if (backplate == NULL)
+      make_backplate();
+    if (backplate != NULL)
+      SDL_BlitSurface(backplate, NULL, background, NULL);
+    else
+      SDL_FillRect(background, NULL, SDL_MapRGB(background->format, 0, 0, 0));
     draw_grid();
     draw_stations();
     draw_tuner();
+    bloom(background);
     target = screen;
     SDL_BlitSurface(background, NULL, screen, NULL);
   } else {
@@ -639,16 +761,36 @@ static void draw_everything(int full)
   else
     SDL_UpdateTexture(texture, &strip,
                       (Uint8 *)screen->pixels + strip.y * screen->pitch, screen->pitch);
+  present();
+}
+
+/* slow random flicker in -1..1 (sum of detuned sines plus a little noise) */
+static double flicker(double t, double seed)
+{
+  return 0.5 * sin(t * 7.3 + seed) + 0.3 * sin(t * 17.9 + 2 * seed) +
+         0.2 * sin(t * 43.1 + 3 * seed) + 0.15 * ((rand() / (double)RAND_MAX) * 2 - 1);
+}
+
+/* put the dial texture (with case), the magic eye and the lamp on screen */
+static void present(void)
+{
+  double t = now_ms() / 1000.0;
+  int ex = WIN_WIDTH - 38, ey = 38;   /* magic eye: top right in the dial */
+
   SDL_RenderClear(renderer);
-  if (cabinet_on)
-  {
+  if (cabinet_on) {
     int playing = !cur_paused;  /* "Spielen" latched like the lamp */
     lamp_shown = lamp_state();
     cabinet_render(renderer, texture, pressed_key,   /* play latched while playing */
-                   playing ? 1u << CAB_KEY_PLAY : 0, lamp_shown, eye_opening());
-  }
-  else
+                   playing ? 1u << CAB_KEY_PLAY : 0, lamp_shown,
+                   0.93 + 0.06 * flicker(t, 1.7));
+    ex += CAB_DIAL_X;
+    ey += CAB_DIAL_Y;
+  } else {
     SDL_RenderCopy(renderer, texture, NULL, NULL);
+  }
+  eye_render(renderer, ex, ey, eye_opening() + 0.025 * flicker(t, 4.1),
+             0.88 + 0.08 * flicker(t, 0.3));
   SDL_RenderPresent(renderer);
 }
 
@@ -1277,7 +1419,7 @@ int main(int argc, char *argv[])
     { "help", no_argument, NULL, 'h' },
     { NULL, 0, NULL, 0 }
   };
-  uint64_t next_redraw = 0, next_poll = 0, next_save = 0, t;
+  uint64_t next_redraw = 0, next_poll = 0, next_save = 0, next_flicker = 0, t;
   int scrolling, presented;
   struct sigaction sa;
 
@@ -1376,6 +1518,8 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  if (eye_init(renderer) != 0)
+    fprintf(stderr, "cannot draw the magic eye\n");
   if (cabinet_on)
     set_cabinet(1);  /* after TTF_Init: the keys have labels */
   if (noise_on && noise_init() != 0) {
@@ -1426,6 +1570,10 @@ int main(int argc, char *argv[])
     if (t >= next_save) {
       save_position();  /* writes only if the dial has moved */
       next_save = t + SAVE_DELAY_MS;
+    }
+    if (!presented && t >= next_flicker) {  /* magic eye and neon lamp flicker */
+      present();
+      next_flicker = t + FLICKER_MS;
     }
     if (presented && scrolling) {
       /* smooth scrolling: ~60 fps. With vsync RenderPresent already

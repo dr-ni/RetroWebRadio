@@ -31,12 +31,17 @@ enum {
    NULL or missing, then a procedural veneer is drawn); 0 on success */
 int cabinet_init(SDL_Renderer *r, const char *font_path, const char *const tex_path[3]);
 
-/* case, dial texture, keys, knobs, pilot lamp and magic eye.
+/* case, dial texture, keys, knobs and pilot lamp.
    pressed: key index or CAB_HIT_KNOB_* held down (else -1); latched: keys
    drawn pressed (bit mask, e.g. play while playing); lamp: 0 off, 1 lit,
-   2 red; eye_open: 0 tuned in .. 1 detuned */
+   2 red; lamp_glow: brightness 0..1 (neon flicker) */
 void cabinet_render(SDL_Renderer *r, SDL_Texture *dial, int pressed, unsigned latched,
-                    int lamp, double eye_open);
+                    int lamp, double lamp_glow);
+
+/* magic eye tuning indicator, drawn over the dial at centre cx,cy
+   (logical units): open 0 tuned in .. 1 detuned, glow 0..1 brightness */
+int eye_init(SDL_Renderer *r);
+void eye_render(SDL_Renderer *r, int cx, int cy, double open, double glow);
 
 /* window shape of the case (alpha 255 inside), CAB_W x CAB_H; caller frees */
 SDL_Surface *cabinet_mask(void);
