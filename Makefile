@@ -38,7 +38,7 @@ roehre: roehre.o stations.o cabinet.o noise.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 roehre.o: roehre.c stations.h radio_icon.h cabinet.h noise.h
-cabinet.o: cabinet.c cabinet.h
+cabinet.o: cabinet.c cabinet.h logo.h
 noise.o: noise.c noise.h
 stations.o: stations.c stations.h
 

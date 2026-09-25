@@ -153,6 +153,10 @@ paused and red when muted.
 The magic eye (right) closes as the tuner reaches a station and opens between stations.
 The mouse wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 
+A brass-framed enamel badge with the Niethammer-Audio logo sits at the top centre, the
+signature is engraved in brass below the keys (both generated into `logo.h` by
+`textures/mklogo.py`, which traces the logo with potrace to smooth the lettering).
+
 The veneer comes from photos of a real radio of that time (`textures/*.bmp`, made with
 `textures/mktextures.py` from the author's own photo); if the files are missing, a
 procedural walnut is drawn instead.

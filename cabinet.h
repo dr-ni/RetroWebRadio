@@ -9,9 +9,9 @@
 
 /* logical size of the whole cabinet and position of the 644x428 dial */
 #define CAB_W      844
-#define CAB_H      706
+#define CAB_H      718
 #define CAB_DIAL_X 100
-#define CAB_DIAL_Y 96
+#define CAB_DIAL_Y 108
 
 /* push buttons below the dial, left to right */
 enum {

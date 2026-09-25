@@ -22,6 +22,7 @@
 #include <string.h>
 #include <SDL_ttf.h>
 #include "cabinet.h"
+#include "logo.h"
 
 #define OUTSIDE     0x141414
 #define EDGE_COL    0x24100a
@@ -38,7 +39,7 @@
 #define KEY_H       34
 #define KEY_GAP     5
 #define PRESS_DY    3
-#define KEYS_Y      (PANEL_Y0 + 34)
+#define KEYS_Y      (PANEL_Y0 + 22)
 #define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 30)
 #define LAMP_Y      (KEYS_Y + KEY_H / 2)
 #define LAMP_R      12
@@ -273,6 +274,91 @@ static void recess_shade(SDL_Surface *s, double x0, double y0, double x1, double
     }
 }
 
+/* brushed brass: light upper bevel, darker below, fine streaks */
+static uint32_t brass(double v, double px, double py)
+{
+  double n = vnoise(px * 0.05, py * 1.7) - 0.5, t;
+  v = v < 0 ? 0 : v > 1 ? 1 : v;
+  t = 1.22 - 0.55 * v + 0.10 * n;
+  if (v < 0.12)
+    t += 0.30 * (1 - v / 0.12);
+  return rgbf(172 * t, 134 * t, 60 * t);
+}
+
+/*
+ * Maker's badge at the top centre: brass frame with two screws around a
+ * red enamel field with the Niethammer-Audio speaker and signature
+ * (masks from logo.h, traced smooth by textures/mklogo.py).
+ */
+static void draw_badge(SDL_Surface *s)
+{
+  const int fw = LOGO_W, fh = LOGO_H, fx0 = (CAB_W - LOGO_W) / 2, fy0 = 17;
+  const double bx0 = fx0 - 7, by0 = fy0 - 7, bx1 = fx0 + fw + 7, by1 = fy0 + fh + 7;
+  int x, y, k;
+
+  /* shadow on the wood, brass frame, dark inner edge */
+  rrect(s, bx0 + 1, by0 + 3, bx1 + 1, by1 + 3, 9, 0x000000, 0, 0);
+  for (y = (int)by0 - 1; y <= by1 + 1; y++)
+    for (x = (int)bx0 - 1; x <= bx1 + 1; x++) {
+      double d = sd_rrect(x + 0.5, y + 0.5, bx0, by0, bx1, by1, 9);
+      if (d < 1) {
+        blend(s, x, y, brass((y - by0) / (by1 - by0), x, y), 0.5 - d);
+        blend(s, x, y, 0x4a3410, (0.5 - (fabs(d + 0.7) - 0.7)) * 0.9);
+      }
+    }
+  rrect(s, fx0 - 1.5, fy0 - 1.5, fx0 + fw + 1.5, fy0 + fh + 1.5, 4, 0x3a2408, 0, 0);
+
+  /* enamel field with the logo */
+  for (y = 0; y < fh; y++)
+    for (x = 0; x < fw; x++) {
+      double v = (double)y / fh;
+      double spk = logo_speaker[y * fw + x] / 255.0, sig = logo_sig[y * fw + x] / 255.0;
+      double d = sd_rrect(x + 0.5, y + 0.5, 0, 0, fw, fh, 3);
+      if (d > 0.5)
+        continue;
+      blend(s, fx0 + x, fy0 + y, rgbf(214 - 40 * v, 34 - 8 * v, 30 - 6 * v), 0.5 - d);
+      blend(s, fx0 + x, fy0 + y, 0x0c0c0c, spk);
+      blend(s, fx0 + x, fy0 + y, 0xf6f1e4, sig);
+      /* glaze: soft reflection across the upper part */
+      if (y < fh * 0.45)
+        blend(s, fx0 + x, fy0 + y, 0xffffff, 0.10 * (1 - y / (fh * 0.45)));
+    }
+
+  /* two screws beside the badge */
+  for (k = 0; k < 2; k++) {
+    double cx = k ? bx1 + 10 : bx0 - 10, cy = (by0 + by1) / 2;
+    for (y = (int)cy - 5; y <= cy + 5; y++)
+      for (x = (int)cx - 5; x <= cx + 5; x++) {
+        double r = hypot(x + 0.5 - cx, y + 0.5 - cy);
+        if (r < 4.5)
+          blend(s, x, y, brass((y - cy + 4.5) / 9, x, y), 4.5 - r > 1 ? 1 : 4.5 - r);
+      }
+    rrect(s, cx - 3, cy - 0.6 + (k ? 0 : 0), cx + 3, cy + 0.6, 0.5, 0x3a2408, 0, 0);
+  }
+}
+
+/* signature engraved in brass below the keys */
+static void draw_signature(SDL_Surface *s)
+{
+  int top = KEYS_Y + KEY_H + 8, bottom = RECESS_Y1 - 6;
+  int x0 = (CAB_W - SIG_W) / 2, y0 = top + (bottom - top - SIG_H) / 2;
+  int x, y;
+
+  for (y = 0; y < SIG_H; y++)
+    for (x = 0; x < SIG_W; x++) {
+      double m = sig_mask[y * SIG_W + x] / 255.0;
+      if (m <= 0)
+        continue;
+      blend(s, x0 + x + 1, y0 + y + 1, 0x140804, m * 0.7);   /* engraved shadow */
+    }
+  for (y = 0; y < SIG_H; y++)
+    for (x = 0; x < SIG_W; x++) {
+      double m = sig_mask[y * SIG_W + x] / 255.0;
+      if (m > 0)
+        blend(s, x0 + x, y0 + y, brass((double)y / SIG_H, x0 + x, y0 + y), m);
+    }
+}
+
 static void key_rect(int k, int *x, int *y)
 {
   int total = CAB_KEYS * KEY_W + (CAB_KEYS - 1) * KEY_GAP;
@@ -306,12 +392,16 @@ static SDL_Surface *draw_case(void)
       }
     }
 
+  draw_badge(s);
+
   /* darker front panel in a recess, with its shadow */
   veneer_box(s, RECESS_X0, RECESS_Y0, RECESS_X1, RECESS_Y1, 30, 6, 1);
   recess_shade(s, RECESS_X0, RECESS_Y0, RECESS_X1, RECESS_Y1, 12);
 
   /* figured lower panel below the dial */
   veneer_box(s, RECESS_X0 + 6, PANEL_Y0, RECESS_X1 - 6, RECESS_Y1 - 6, 4, 4, 2);
+
+  draw_signature(s);
 
   /* thin gold strip around the dial and above the keys */
   rrect(s, CAB_DIAL_X - 5, CAB_DIAL_Y - 5, CAB_DIAL_X + 644 + 5, CAB_DIAL_Y + 428 + 5,
