@@ -106,7 +106,8 @@ static uint64_t toast_timeout = 0;
 static int refresh_now = 1;
 static int cabinet_on = 0;            // draw the radio case around the dial
 static int cur_volume = -1;           // last known mpd volume, -1 unknown
-static int mouse_x, mouse_y;          // last pointer position (logical)
+static int cur_paused = 0;            // mpd reports [paused]
+static int pressed_key = -1;          // cabinet key held down with the mouse
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE };
 static volatile sig_atomic_t window_request = WIN_NONE;
@@ -441,9 +442,14 @@ static void get_current_track(void)
     while (fgets(line, sizeof(line), fp) != NULL) {
       int v;
       chomp(line);
-      if (sscanf(line, "volume: %d%%", &v) == 1 && v != cur_volume) {
-        cur_volume = v;       /* moves the volume knob of the cabinet */
-        refresh_now = 1;
+      if (sscanf(line, "volume: %d%%", &v) == 1)
+        cur_volume = v;
+      if (line[0] == '[') {   /* "[playing] #1/1 ..." or "[paused] ..." */
+        int p = strncmp(line, "[paused]", 8) == 0;
+        if (p != cur_paused) {
+          cur_paused = p;     /* latches the play/pause key of the cabinet */
+          refresh_now = 1;
+        }
       }
       if (strncmp(line, "ERROR", 5) == 0) {
         snprintf(new_track, sizeof(new_track), "%s", line);
@@ -605,8 +611,8 @@ static void draw_everything(int full)
                       (Uint8 *)screen->pixels + strip.y * screen->pitch, screen->pitch);
   SDL_RenderClear(renderer);
   if (cabinet_on)
-    cabinet_render(renderer, texture, cur_volume >= 0 ? cur_volume / 100.0 : -1,
-                   ((current_page - 1) + (double)(xpos + OFFSET_X) / WIN_WIDTH) / stations.pages);
+    cabinet_render(renderer, texture, pressed_key,
+                   cur_paused ? 1u << CAB_KEY_PLAY : 0);
   else
     SDL_RenderCopy(renderer, texture, NULL, NULL);
   SDL_RenderPresent(renderer);
@@ -624,6 +630,31 @@ static void change_volume(int delta)
   }
   snprintf(msg, sizeof(msg), "Volume %+d", delta);
   show_toast(msg, 300);
+}
+
+static void play_pause(void)
+{
+  char *argv[] = { "mpc", "-q", "toggle", NULL };
+
+  run_async(argv);
+  cur_paused = !cur_paused;  /* the poll confirms */
+  show_toast(cur_paused ? "Pause" : "Play", 600);
+}
+
+/* action of a cabinet key */
+static void press_key(int key)
+{
+  switch (key) {
+  case CAB_KEY_VOLUP:   change_volume(+3); break;
+  case CAB_KEY_PLAY:    play_pause(); break;
+  case CAB_KEY_VOLDOWN: change_volume(-3); break;
+  case CAB_KEY_RIGHT:   search_dir = +1; break;   /* scan to the next station */
+  case CAB_KEY_LEFT:    search_dir = -1; break;
+  case CAB_KEY_UP:      search_dir = 0; page_step(+1); break;
+  case CAB_KEY_DOWN:    search_dir = 0; page_step(-1); break;
+  default: break;
+  }
+  refresh_now = 1;
 }
 
 /* switch the radio case on/off */
@@ -694,6 +725,11 @@ static int process_events(void)
       case SDLK_g:
         set_cabinet(!cabinet_on);
         break;
+      case SDLK_p:
+      case SDLK_SPACE:
+      case SDLK_AUDIOPLAY:
+        play_pause();
+        break;
       case SDLK_m:
       case SDLK_AUDIOMUTE:
         mpc_toggle_mute();
@@ -707,48 +743,37 @@ static int process_events(void)
         break;
       }
       break;
-    case SDL_MOUSEMOTION:
-      mouse_x = event.motion.x;
-      mouse_y = event.motion.y;
-      continue;  /* no redraw needed */
+    case SDL_MOUSEBUTTONDOWN:
+      if (cabinet_on && event.button.button == SDL_BUTTON_LEFT) {
+        int hit = cabinet_hit(event.button.x, event.button.y);
+        pressed_key = hit >= CAB_HIT_KEY ? hit - CAB_HIT_KEY : -1;
+      }
+      break;
     case SDL_MOUSEBUTTONUP:
-      search_dir = 0;
       if (!cabinet_on) {
+        search_dir = 0;
         xpos = event.button.x - OFFSET_X;  /* logical coordinates */
         break;
       }
-      switch (cabinet_hit(event.button.x, event.button.y)) {
-      case CAB_HIT_DIAL:
-        xpos = event.button.x - CAB_DIAL_X - OFFSET_X;
-        break;
-      case CAB_HIT_VOL_DOWN:
-        change_volume(-3);
-        break;
-      case CAB_HIT_VOL_UP:
-        change_volume(+3);
-        break;
-      case CAB_HIT_TUNE_DOWN:
-        move_tuner(-KEY_STEP);
-        break;
-      case CAB_HIT_TUNE_UP:
-        move_tuner(+KEY_STEP);
-        break;
-      default:
-        break;
+      {
+        int hit = cabinet_hit(event.button.x, event.button.y);
+        if (hit == CAB_HIT_DIAL) {
+          search_dir = 0;
+          xpos = event.button.x - CAB_DIAL_X - OFFSET_X;
+        } else if (hit >= CAB_HIT_KEY && hit - CAB_HIT_KEY == pressed_key) {
+          press_key(pressed_key);  /* released on the same key */
+        }
+        pressed_key = -1;
       }
       break;
     case SDL_MOUSEWHEEL: {
       int dir = event.wheel.y;
-      int hit = cabinet_on ? cabinet_hit(mouse_x, mouse_y) : CAB_HIT_NONE;
       if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
         dir = -dir;
       if (dir == 0)
         continue;
       search_dir = 0;
-      if (hit == CAB_HIT_VOL_DOWN || hit == CAB_HIT_VOL_UP)
-        change_volume(dir > 0 ? +3 : -3);
-      else
-        move_tuner(dir > 0 ? +KEY_STEP : -KEY_STEP);  /* wheel tunes */
+      move_tuner(dir > 0 ? +KEY_STEP : -KEY_STEP);  /* wheel tunes */
       break;
     }
     case SDL_QUIT:

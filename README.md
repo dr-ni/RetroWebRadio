@@ -112,8 +112,9 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | v, +, keypad +, volume-up key | volume +3 |
 | -, keypad -, volume-down key | volume -3 |
 | m, mute key | mute / unmute (restores the previous volume) |
+| p, space, play key | play / pause |
 | g | radio cabinet on/off |
-| mouse wheel | tune (over the volume knob: volume) |
+| mouse wheel | tune |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
 
@@ -127,11 +128,11 @@ already playing that station, it is taken over without re-tuning (no gap).
 Optionally the dial sits in a tube radio case like the icon (key `g` or `-g`; the
 choice is remembered):
 
-<img src="cabinet.png" width=60%>
+<img src="cabinet.png" width=50%>
 
-The left knob sets the volume, the right one tunes: click its left or right half,
-or use the mouse wheel over it. The knob markers show the current volume and the
-position on the dial across all pages.
+Piano keys below the dial, left to right: volume +, play/pause, volume −,
+scan right, next page, previous page, scan left. Play/pause stays pressed down
+while mpd is paused. The mouse wheel tunes.
 
 ## Tray icon
 
