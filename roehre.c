@@ -127,6 +127,7 @@ static int lamp_shown = -1;           // lamp state on screen
 static int noise_on = 1;              // tuning static (-N or key n: off)
 static int shaped = 0;                // X11 window: can be cut to the case outline
 static int fullscreen = 0;
+static int scale_milli = 1000;        // window size / logical size, remembered
 static volatile sig_atomic_t stop_requested = 0;
 enum { WIN_NONE, WIN_SHOW, WIN_HIDE, WIN_TOGGLE, WIN_RADIO, WIN_DISPLAY };
 static volatile sig_atomic_t window_request = WIN_NONE;
@@ -834,8 +835,43 @@ static SDL_HitTestResult hit_test(SDL_Window *win, const SDL_Point *pt, void *da
   SDL_GetWindowSize(win, &ww, &wh);
   if (ww <= 0 || wh <= 0)
     return SDL_HITTEST_NORMAL;
-  return cabinet_hit(pt->x * CAB_W / ww, pt->y * CAB_H / wh) == CAB_HIT_NONE
-         ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+  {
+    /* resize grips on the case (inside its outline, logical units):
+       the side edges and the lower corners of the wooden body */
+    int lx = pt->x * CAB_W / ww, ly = pt->y * CAB_H / wh;
+    int left = lx < 18, right = lx >= CAB_W - 18;
+    int low = ly >= CAB_H - 70;
+    if (low && lx >= CAB_W - 44)
+      return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+    if (low && lx < 44)
+      return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+    if (right && ly > CAB_H / 5)
+      return SDL_HITTEST_RESIZE_RIGHT;
+    if (left && ly > CAB_H / 5)
+      return SDL_HITTEST_RESIZE_LEFT;
+    if (ly >= CAB_H - 26)  /* bottom edge and plinth */
+      return SDL_HITTEST_RESIZE_BOTTOM;
+    return cabinet_hit(lx, ly) == CAB_HIT_NONE ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+  }
+}
+
+/*
+ * The user resized the window: keep the aspect ratio of the radio or
+ * display, remember the scale and cut the shape to the new size.
+ */
+static void window_resized(int w, int h)
+{
+  int lw = cabinet_on ? CAB_W : WIN_WIDTH, lh = cabinet_on ? CAB_H : WIN_HEIGHT;
+  int want = w * lh / lw;
+
+  scale_milli = w * 1000 / lw;
+  if (abs(want - h) > 2) {
+    SDL_SetWindowSize(window, w, want);  /* comes back as another event */
+    return;
+  }
+  if (shaped)
+    apply_shape(cabinet_on, w, h);
+  refresh_now = 1;
 }
 
 /* switch the radio case on/off */
@@ -864,6 +900,9 @@ static void set_cabinet(int on)
   h = on ? CAB_H : WIN_HEIGHT;
   SDL_RenderSetLogicalSize(renderer, w, h);
   if (!fullscreen) {
+    SDL_SetWindowMinimumSize(window, w / 3, h / 3);
+    w = w * scale_milli / 1000;  /* keep the user's size */
+    h = h * scale_milli / 1000;
     SDL_SetWindowSize(window, w, h);
     /* the radio has no window frame, the display alone keeps it */
     SDL_SetWindowBordered(window, on ? SDL_FALSE : SDL_TRUE);
@@ -989,6 +1028,10 @@ static int process_events(void)
       move_tuner(dir > 0 ? +KEY_STEP : -KEY_STEP);  /* wheel tunes */
       break;
     }
+    case SDL_WINDOWEVENT:
+      if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED && !fullscreen)
+        window_resized(event.window.data1, event.window.data2);
+      break;
     case SDL_QUIT:
       return 0;
     default:
@@ -1004,7 +1047,7 @@ static int process_events(void)
 /* ------------------------------------------------------------------ */
 
 static char state_file[PATH_MAX + 16];
-static int saved_page = -1, saved_xpos = 0, saved_cabinet = -1;
+static int saved_page = -1, saved_xpos = 0, saved_cabinet = -1, saved_scale = 1000;
 
 /* $XDG_STATE_HOME/retrowebradio/position or ~/.local/state/... */
 static void init_state_file(void)
@@ -1030,14 +1073,19 @@ static void init_state_file(void)
 static void load_position(void)
 {
   FILE *fp;
-  int page, x, cab, n;
+  int page, x, cab, sc, n;
 
   if (state_file[0] == '\0' || (fp = fopen(state_file, "r")) == NULL)
     return;
-  n = fscanf(fp, "%d %d %d", &page, &x, &cab);
-  if (n == 3) {
+  n = fscanf(fp, "%d %d %d %d", &page, &x, &cab, &sc);
+  if (n >= 3) {
     cabinet_on = cab != 0;
     saved_cabinet = cabinet_on;
+    saved_scale = scale_milli;
+  }
+  if (n == 4 && sc >= 250 && sc <= 4000) {
+    scale_milli = sc;
+    saved_scale = sc;
   }
   if (n >= 2 &&
       page >= 1 && page <= stations.pages &&
@@ -1056,12 +1104,13 @@ static void save_position(void)
   FILE *fp;
 
   if (state_file[0] == '\0' ||
-      (current_page == saved_page && xpos == saved_xpos && cabinet_on == saved_cabinet))
+      (current_page == saved_page && xpos == saved_xpos && cabinet_on == saved_cabinet &&
+       scale_milli == saved_scale))
     return;
   snprintf(tmp, sizeof(tmp), "%s.tmp", state_file);
   if ((fp = fopen(tmp, "w")) == NULL)
     return;
-  fprintf(fp, "%d %d %d\n", current_page, xpos, cabinet_on);
+  fprintf(fp, "%d %d %d %d\n", current_page, xpos, cabinet_on, scale_milli);
   if (fclose(fp) == 0 && rename(tmp, state_file) == 0) {
     saved_page = current_page;
     saved_xpos = xpos;
@@ -1285,8 +1334,9 @@ int main(int argc, char *argv[])
   if (force_cabinet >= 0)
     cabinet_on = force_cabinet;
   window = SDL_CreateWindow("RetroWebRadio", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                              cabinet_on ? CAB_W : WIN_WIDTH, cabinet_on ? CAB_H : WIN_HEIGHT,
-                              fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                              (cabinet_on ? CAB_W : WIN_WIDTH) * scale_milli / 1000,
+                              (cabinet_on ? CAB_H : WIN_HEIGHT) * scale_milli / 1000,
+                              fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_RESIZABLE);
   if (window == NULL)
     die("SDL_CreateWindow");
   {
@@ -1298,6 +1348,7 @@ int main(int argc, char *argv[])
       SDL_FreeSurface(icon);
     }
   }
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");  /* smooth when resized */
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
   if (renderer == NULL)
     renderer = SDL_CreateRenderer(window, -1, 0);

@@ -39,7 +39,7 @@
 #define KEY_H       34
 #define KEY_GAP     5
 #define PRESS_DY    3
-#define KEYS_Y      (PANEL_Y0 + 22)
+#define KEYS_Y      (PANEL_Y0 + 34)
 #define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 30)
 #define LAMP_Y      (KEYS_Y + KEY_H / 2)
 #define LAMP_R      12
@@ -286,15 +286,14 @@ static uint32_t brass(double v, double px, double py)
 }
 
 /*
- * Maker's badge below the keys: brass frame around a red enamel field
+ * Maker's badge at the top centre: brass frame around a red enamel field
  * with the Niethammer-Audio speaker and signature (masks from logo.h,
  * traced smooth by textures/mklogo.py).
  */
 static void draw_badge(SDL_Surface *s)
 {
-  const int top = KEYS_Y + KEY_H + 8, bottom = RECESS_Y1 - 6;
   const int fw = LOGO_W, fh = LOGO_H, fx0 = (CAB_W - LOGO_W) / 2;
-  const int fy0 = top + (bottom - top - LOGO_H) / 2;
+  const int fy0 = (RECESS_Y0 - LOGO_H) / 2 + 2;
   const double bx0 = fx0 - 7, by0 = fy0 - 7, bx1 = fx0 + fw + 7, by1 = fy0 + fh + 7;
   int x, y;
 
@@ -360,14 +359,14 @@ static SDL_Surface *draw_case(void)
       }
     }
 
+  draw_badge(s);
+
   /* darker front panel in a recess, with its shadow */
   veneer_box(s, RECESS_X0, RECESS_Y0, RECESS_X1, RECESS_Y1, 30, 6, 1);
   recess_shade(s, RECESS_X0, RECESS_Y0, RECESS_X1, RECESS_Y1, 12);
 
   /* figured lower panel below the dial */
   veneer_box(s, RECESS_X0 + 6, PANEL_Y0, RECESS_X1 - 6, RECESS_Y1 - 6, 4, 4, 2);
-
-  draw_badge(s);
 
   /* thin gold strip around the dial and above the keys */
   rrect(s, CAB_DIAL_X - 5, CAB_DIAL_Y - 5, CAB_DIAL_X + 644 + 5, CAB_DIAL_Y + 428 + 5,

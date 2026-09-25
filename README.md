@@ -108,7 +108,7 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | Option | Meaning |
 |--------|---------|
 | `-f` | fullscreen, scaled to the display with the aspect ratio kept |
-| `-g`, `--radio` | the radio: cabinet around the dial, window without frame, cut to the outline of the case (X11), moved by dragging the case |
+| `-g`, `--radio` | the radio: cabinet around the dial, window without frame, cut to the outline of the case (X11), moved by dragging the case, resized at its sides and lower corners |
 | `-G`, `--display` | only the display (dial) in a normal window (default for both: as last time) |
 | `-N`, `--no-noise` | no static between stations |
 | `-s` | station list; default: next to the binary, `./`, `~/.config/retrowebradio/`, `PREFIX/share/retrowebradio` |
@@ -129,6 +129,8 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | mouse wheel | tune |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
+
+Both views can be resized; the aspect ratio is kept and the size is remembered.
 
 The dial position (page and tuner) is saved in `~/.local/state/retrowebradio/position`
 and restored on the next start, so the radio comes back on the last station. If mpd is
@@ -153,7 +155,7 @@ paused and red when muted.
 The magic eye (right) closes as the tuner reaches a station and opens between stations.
 The mouse wheel tunes. The labels use DejaVu Serif if installed, else the dial font.
 
-A brass-framed enamel badge with the Niethammer-Audio logo sits below the keys (generated
+A brass-framed enamel badge with the Niethammer-Audio logo sits at the top centre (generated
 into `logo.h` by `textures/mklogo.py`, which traces the logo with potrace to smooth the
 lettering).
 
