@@ -66,6 +66,8 @@
 
 #define TICK_MS 20          // main loop period
 #define IDLE_REDRAW_MS 500  // redraw at least this often
+#define EYE_CX (WIN_WIDTH - 50)   // magic eye centre in the dial
+#define EYE_CY 44
 #define FRAME_MS 16         // frame period while the title scrolls
 #define SCROLL_SPEED 45     // title scrolling in px per second
 #define SCROLL_GAP 60       // px between end and restart of a scrolling title
@@ -95,6 +97,7 @@ static SDL_Surface *screen;           // software canvas, WIN_WIDTH x WIN_HEIGHT
 static TTF_Font *station_font;
 static TTF_Font *station_font_big;
 static TTF_Font *track_font;
+static TTF_Font *caption_font;
 static struct stationlist stations;
 
 static int xpos = 0;                  // tuner position relative to OFFSET_X
@@ -531,8 +534,8 @@ static void draw_grid(void)
 
 static void draw_stations(void)
 {
-  const SDL_Color normal = { 92, 196, 140, 255 };      /* backlit mint green */
-  const SDL_Color highlight = { 232, 236, 196, 255 };
+  const SDL_Color normal = { 68, 156, 108, 255 };      /* backlit mint green */
+  const SDL_Color highlight = { 200, 210, 170, 255 };
   const struct page *p = page_now();
   int i, w, h;
 
@@ -546,6 +549,17 @@ static void draw_stations(void)
     blit_text(font, name, hl ? highlight : normal,
               station_x(p, i) - w / 2, station_y(i) - (hl ? 1 : 0));
   }
+}
+
+/* "Empfang" (reception) printed under the magic eye */
+static void draw_eye_caption(void)
+{
+  const SDL_Color c = { 70, 140, 100, 255 };
+  int w = 0, h = 0;
+
+  if (caption_font == NULL || TTF_SizeUTF8(caption_font, "Empfang", &w, &h) != 0)
+    return;
+  blit_text(caption_font, "Empfang", c, EYE_CX - w / 2, EYE_CY + 38);
 }
 
 /* alpha-blend a rectangle onto the target (ARGB8888) */
@@ -655,7 +669,7 @@ static void bloom(SDL_Surface *s)
       for (c = 0; c < 3; c++) {
         float g = (a[(y0 * sw + x0) * 3 + c] * (1 - wx) + a[(y0 * sw + x1) * 3 + c] * wx) * (1 - wy) +
                   (a[(y1 * sw + x0) * 3 + c] * (1 - wx) + a[(y1 * sw + x1) * 3 + c] * wx) * wy;
-        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 0.6f * g);
+        int v = (int)(((p >> (16 - 8 * c)) & 0xff) + 0.45f * g);
         out |= (Uint32)(v > 255 ? 255 : v) << (16 - 8 * c);
       }
       row[x] = out;
@@ -743,6 +757,7 @@ static void draw_everything(int full)
       SDL_FillRect(background, NULL, SDL_MapRGB(background->format, 0, 0, 0));
     draw_grid();
     draw_stations();
+    draw_eye_caption();
     draw_tuner();
     bloom(background);
     target = screen;
@@ -763,7 +778,7 @@ static void draw_everything(int full)
 /* put the dial texture (with case), the magic eye and the lamp on screen */
 static void present(void)
 {
-  int ex = WIN_WIDTH - 38, ey = 38;   /* magic eye: top right in the dial */
+  int ex = EYE_CX, ey = EYE_CY;       /* magic eye: top right in the dial */
 
   SDL_RenderClear(renderer);
   if (cabinet_on) {
@@ -1499,6 +1514,7 @@ int main(int argc, char *argv[])
   station_font = TTF_OpenFont(font_path, 22);
   station_font_big = TTF_OpenFont(font_path, 22);
   track_font = TTF_OpenFont(font_path, 15);
+  caption_font = TTF_OpenFont(font_path, 12);
   if (station_font == NULL || station_font_big == NULL || track_font == NULL) {
     fprintf(stderr, "ERROR: cannot load font %s: %s\n", font_path, TTF_GetError());
     return 1;

@@ -148,11 +148,12 @@ Push buttons, left to right: Spielen (play/pause), Lauter (volume +), Leiser (vo
 "Spielen" stays pressed down while the radio plays (not paused). The knobs at the lower corners are
 step buttons: left knob tunes one step left, right knob one step right, holding repeats.
 
-The pilot lamp (left) is a small neon glow tube with a glowing mesh electrode: on while
+The pilot lamp (left) is a neon glow lamp seen from the top through a round window, its
+mesh electrode glowing: on while
 the radio plays (also between stations), off while paused and red when muted.
 
 The dial is backlit: the lettering and lines glow softly, the tuner is a narrow glowing
-needle. The magic eye sits in the top right corner of the dial (in both views): a green
+needle. The magic eye, labelled "Empfang", sits in the top right corner of the dial (in both views): a green
 fluorescent ring around a grey metal cap under a glass dome; its shadow sectors close as
 the tuner reaches a station and open between stations.
 The mouse wheel tunes. The labels use DejaVu Serif if installed, else the dial font.

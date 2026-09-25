@@ -43,14 +43,14 @@
 #define LAMP_X      (CAB_W / 2 - (CAB_KEYS * (KEY_W + KEY_GAP)) / 2 - 30)
 #define LAMP_Y      (KEYS_Y + KEY_H / 2)
 #define LAMP_R      12
-#define EYE_R       22
+#define EYE_R       30
 #define EYE_STEPS   24                        /* pre-rendered shadow widths */
 #define KNOB_R      30
 #define KNOB_Y      (RECESS_Y1 - 8)
 #define KNOB_X(k)   ((k) ? RECESS_X1 - 14 : RECESS_X0 + 14)
 #define KNOB_S      (2 * (KNOB_R + 10))       /* knob texture size */
 #define LAMP_S      64
-#define EYE_S       64
+#define EYE_S       80
 
 static SDL_Texture *cab_tex, *key_tex[CAB_KEYS][2], *lamp_tex[3], *knob_tex[2][2];
 static SDL_Texture *eye_tex[EYE_STEPS + 1];
@@ -380,8 +380,9 @@ static SDL_Surface *draw_case(void)
     rrect(s, kx - 6, ky - 6, kx2 + KEY_W + 6, ky + KEY_H + 8, 5, 0x100804, 1.5, 0x3a2412);
   }
 
-  /* window for the neon tube */
-  rrect(s, LAMP_X - 11, LAMP_Y - 21, LAMP_X + 11, LAMP_Y + 23, 8, 0x1a0d06, 2.5, 0x6a4a28);
+  /* round window for the neon lamp */
+  rrect(s, LAMP_X - LAMP_R - 4, LAMP_Y - LAMP_R - 4, LAMP_X + LAMP_R + 4, LAMP_Y + LAMP_R + 4,
+        LAMP_R + 4, 0x1a0d06, 2.5, 0x6a4a28);
   return s;
 }
 
@@ -454,15 +455,14 @@ static SDL_Surface *draw_knob(int k, int down)
 }
 
 /*
- * Pilot lamp as a small neon glow lamp: an upright glass tube with a
- * cross-hatched mesh electrode that glows orange (red when muted), with a
- * bright spot, a warm halo and the glass tip at the bottom.
- * state 0: off (clear glass, grey mesh).
+ * Pilot lamp: a neon glow lamp seen from the top through a round window.
+ * The cross-hatched mesh electrode glows orange (red when muted) with a
+ * bright centre and a warm halo; off: clear glass over a grey mesh.
  */
 static SDL_Surface *draw_lamp(int state)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, LAMP_S, LAMP_S, 32, SDL_PIXELFORMAT_ARGB8888);
-  const double c = LAMP_S / 2.0, hw = 7.5, hh = 17;       /* tube half width / height */
+  const double c = LAMP_S / 2.0, R = LAMP_R;
   uint32_t neon = state == 2 ? 0xff3010 : 0xff8a28;
   int x, y;
 
@@ -471,38 +471,31 @@ static SDL_Surface *draw_lamp(int state)
   SDL_FillRect(s, NULL, 0);
   for (y = 0; y < LAMP_S; y++)
     for (x = 0; x < LAMP_S; x++) {
-      double dx = x + 0.5 - c, dy = y + 0.5 - c;
-      double d = sd_rrect(x + 0.5, y + 0.5, c - hw, c - hh, c + hw, c + hh, hw);
-      double a = 0.5 - d > 1 ? 1 : 0.5 - d;
-      double in = d < -2.2;                                 /* inside the glass wall */
-      double mesh, glow;
+      double dx = x + 0.5 - c, dy = y + 0.5 - c, r = hypot(dx, dy);
+      double a = R - r > 1 ? 1 : R - r, mesh, glow;
 
-      if (state)                                            /* warm halo */
-        blend(s, x, y, neon, 0.65 * exp(-(dx * dx / 200 + dy * dy / 520)));
+      if (state)                                             /* warm halo */
+        blend(s, x, y, neon, 0.55 * exp(-pow(r / (R * 1.7), 2)));
       if (a <= 0)
         continue;
-      blend(s, x, y, state ? 0x5a2008 : 0x303030, a * 0.55);   /* glass body */
-      /* diagonal wire mesh in the middle of the tube */
-      mesh = fmin(fabs(fmod(dx + dy + 100, 4.0) - 2.0), fabs(fmod(dx - dy + 100, 4.0) - 2.0));
-      if (in && fabs(dx) < hw - 3 && fabs(dy) < hh - 5) {
-        double wire = mesh < 0.7 ? 1 : 0;
+      blend(s, x, y, state ? 0x4a1806 : 0x2a2826, a);        /* inside the glass */
+      mesh = fmin(fabs(fmod(dx + dy + 100, 3.6) - 1.8), fabs(fmod(dx - dy + 100, 3.6) - 1.8));
+      if (r < R - 2.5) {
         if (state) {
-          glow = exp(-(dx * dx / 18 + (dy - 2) * (dy - 2) / 90));   /* bright spot */
-          blend(s, x, y, neon, 0.85);
-          blend(s, x, y, 0xfff0c8, 0.9 * glow);
-          if (wire)
-            blend(s, x, y, 0x7a2a08, 0.55 * (1 - glow));
-        } else if (wire) {
-          blend(s, x, y, 0x8a8680, 0.8);
+          glow = exp(-pow(r / (R * 0.55), 2));               /* bright centre */
+          blend(s, x, y, neon, a * 0.9);
+          blend(s, x, y, 0xfff0c8, a * 0.85 * glow);
+          if (mesh < 0.6)
+            blend(s, x, y, 0x6a2406, 0.6 * (1 - glow));
+        } else if (mesh < 0.6) {
+          blend(s, x, y, 0x8a8680, 0.75);
         }
       }
-      if (d > -2.2)                                          /* glass wall */
-        blend(s, x, y, state ? 0xffb070 : 0xb8b4ac, a * 0.45);
-      if (dx < -hw + 3.5 && dx > -hw + 2 && fabs(dy) < hh - 6)
-        blend(s, x, y, 0xffffff, 0.40);                    /* reflection */
+      if (r > R - 2.5)                                       /* glass rim */
+        blend(s, x, y, state ? 0xffb070 : 0xb0aca4, a * 0.5);
+      if (hypot(dx + R * 0.35, dy + R * 0.4) < R * 0.18)     /* reflection */
+        blend(s, x, y, 0xffffff, 0.45);
     }
-  /* glass tip */
-  rrect(s, c - 2, c + hh - 1, c + 2, c + hh + 3, 2, state ? 0xffb070 : 0x9a968e, 0, 0);
   return s;
 }
 
