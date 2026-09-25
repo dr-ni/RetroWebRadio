@@ -10,7 +10,6 @@ It shows the stations like the dial of an old tube radio; move the tuner over a 
 
 The `radio/` folder contains everything needed to build the complete radio on a Raspberry Pi:
 three KY-040 rotary encoder daemons (volume, page, tuning), helper scripts and boot/mpd configuration.
-See [radio/README.md](radio/README.md).
 
 ## Requirements
 
