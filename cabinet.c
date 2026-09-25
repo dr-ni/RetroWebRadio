@@ -17,17 +17,9 @@
 #include <stdint.h>
 #include "cabinet.h"
 
-#define WOOD_COL   0x5a2d14   /* walnut */
-#define WOOD_DARK  0x3a1a0a
-#define WOOD_LIGHT 0x8a4a22
 #define EDGE_COL   0x24100a
 #define BRASS_COL  0xc9a34a
 #define BRASS_DARK 0x7a5a1e
-#define BRASS_LITE 0xf0d98a
-#define KEY_COL    0x3a2012   /* brown Bakelite */
-#define KEY_DN     0x26140a
-#define SYMBOL_COL 0xefe0b8   /* cream inlay */
-#define SYMBOL_DN  0xcdbd95
 #define OUTSIDE    0x141414
 
 #define ARCH_H     70         /* height of the arched top above the body */
@@ -68,6 +60,64 @@ static void blend(SDL_Surface *s, int x, int y, uint32_t rgb, double a)
   g = (int)((((d >> 8) & 0xff) * da * (1 - a) + ((rgb >> 8) & 0xff) * a) / oa);
   b = (int)(((d & 0xff) * da * (1 - a) + (rgb & 0xff) * a) / oa);
   *p = ((uint32_t)(oa * 255 + 0.5) << 24) | (uint32_t)(r << 16) | (uint32_t)(g << 8) | (uint32_t)b;
+}
+
+/* ---- value noise for wood and Bakelite ---------------------------- */
+
+static double hash2(int x, int y)
+{
+  uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u;
+  h = (h ^ (h >> 13)) * 1274126177u;
+  return ((h ^ (h >> 16)) & 0xffffff) / 16777215.0;
+}
+
+static double vnoise(double x, double y)
+{
+  int ix = (int)floor(x), iy = (int)floor(y);
+  double fx = x - ix, fy = y - iy;
+  double ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  double a = hash2(ix, iy), b = hash2(ix + 1, iy);
+  double c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+
+static double fbm(double x, double y)
+{
+  double v = 0, amp = 0.5;
+  int i;
+  for (i = 0; i < 5; i++, x *= 2.03, y *= 2.03, amp *= 0.5)
+    v += amp * vnoise(x, y);
+  return v;  /* ~0..1 */
+}
+
+static uint32_t rgbf(double r, double g, double b)
+{
+  r = r < 0 ? 0 : r > 255 ? 255 : r;
+  g = g < 0 ? 0 : g > 255 ? 255 : g;
+  b = b < 0 ? 0 : b > 255 ? 255 : b;
+  return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
+
+/*
+ * Book-matched walnut veneer: mirrored at the centre line like on real
+ * cabinets, wavy vertical grain lines with a slow figure, fine pores
+ * and a soft varnish sheen.
+ */
+static uint32_t walnut(double px, double py)
+{
+  double mx = fabs(px - CAB_W / 2.0), t, lines, fig, pores, sheen, k;
+  double warp = fbm(mx * 0.004 + 7.3, py * 0.003) - 0.5;
+
+  fig = fbm(mx * 0.010 + warp * 2.0, py * 0.0022 + 3.1);           /* 0..1 */
+  lines = sin(mx * 0.33 + warp * 22 + fbm(mx * 0.03, py * 0.006) * 9);
+  lines = pow(0.5 + 0.5 * lines, 6);                                 /* thin dark lines */
+  pores = vnoise(px * 0.9, py * 0.08);
+  t = 0.35 + 0.65 * fig;
+  k = 1.0 - 0.28 * lines - 0.07 * pores;
+  /* varnish: a broad soft highlight band */
+  sheen = 0.10 * exp(-pow((px - CAB_W * 0.32) / (CAB_W * 0.22), 2));
+  return rgbf((52 + 60 * t) * k * (1 + sheen), (24 + 30 * t) * k * (1 + sheen),
+              (10 + 14 * t) * k * (1 + sheen));
 }
 
 /* signed distance to a rounded rectangle (negative inside) */
@@ -129,6 +179,31 @@ static void key_rect(int k, int *x, int *y)
   *y = SLOT_Y0 + (SLOT_Y1 - SLOT_Y0 - KEY_H) / 2 - 2;
 }
 
+/* brushed brass: light at the top edge, darker below, fine streaks */
+static uint32_t brass(double py, double y0, double y1, double px)
+{
+  double v = (py - y0) / (y1 - y0), n = vnoise(px * 0.03, py * 1.7) - 0.5, t;
+  v = v < 0 ? 0 : v > 1 ? 1 : v;
+  t = 1.25 - 0.55 * v + 0.10 * n;
+  if (v < 0.12)
+    t += 0.35 * (1 - v / 0.12);   /* bright bevel */
+  return rgbf(170 * t, 132 * t, 58 * t);
+}
+
+/* rounded rect filled with brushed brass */
+static void brass_rrect(SDL_Surface *s, double x0, double y0, double x1, double y1, double r)
+{
+  int x, y;
+  for (y = (int)y0 - 1; y <= (int)y1 + 1; y++)
+    for (x = (int)x0 - 1; x <= (int)x1 + 1; x++) {
+      double d = sd_rrect(x + 0.5, y + 0.5, x0, y0, x1, y1, r);
+      if (d < 1) {
+        blend(s, x, y, brass(y + 0.5, y0, y1, x + 0.5), 0.5 - d);
+        blend(s, x, y, 0x5a3e12, (0.5 - (fabs(d + 0.75) - 0.75)) * 0.8);  /* dark edge */
+      }
+    }
+}
+
 /* distance to the case outline: straight body with an arched top */
 static double sd_case(double px, double py)
 {
@@ -152,26 +227,20 @@ static SDL_Surface *draw_case(void)
   SDL_FillRect(s, NULL, 0xff000000u | OUTSIDE);
 
   /* brass ball feet */
-  rrect(s, 60, BODY_BOTTOM - 20, 150, CAB_H - 4, 10, BRASS_DARK, 0, 0);
-  rrect(s, CAB_W - 150, BODY_BOTTOM - 20, CAB_W - 60, CAB_H - 4, 10, BRASS_DARK, 0, 0);
+  brass_rrect(s, 60, BODY_BOTTOM - 20, 150, CAB_H - 4, 10);
+  brass_rrect(s, CAB_W - 150, BODY_BOTTOM - 20, CAB_W - 60, CAB_H - 4, 10);
 
-  /* walnut case with grain, dark edge */
+  /* walnut veneer, darker towards the rounded edge (bevel) */
   for (y = 0; y < CAB_H; y++)
     for (x = 0; x < CAB_W; x++) {
       double d = sd_case(x + 0.5, y + 0.5);
-      double grain, cov;
-      uint32_t col;
+      double cov, shade;
       if (d > 1)
         continue;
       cov = 0.5 - d;
-      /* slow figure plus fine pores, kept subtle */
-      grain = sin(x * 0.028 + sin(y * 0.009) * 2.2 + sin(y * 0.031 + x * 0.003) * 0.6);
-      grain += 0.25 * sin(x * 0.19 + sin(y * 0.05) * 1.5);
-      col = grain > 0 ? WOOD_LIGHT : WOOD_DARK;
-      blend(s, x, y, WOOD_COL, cov);
-      blend(s, x, y, col, cov * (grain > 0 ? 0.16 : 0.22) * fabs(grain));
-      if (d > -6)                                  /* rim */
-        blend(s, x, y, EDGE_COL, cov * (d > -4 ? 1 : (d + 6) / 2));
+      blend(s, x, y, walnut(x + 0.5, y + 0.5), cov);
+      shade = d > -14 ? (d + 14) / 14 : 0;                 /* 0 inside .. 1 at edge */
+      blend(s, x, y, EDGE_COL, cov * 0.75 * shade * shade);
     }
 
   /* brass pinstripe following the outline */
@@ -189,13 +258,11 @@ static SDL_Surface *draw_case(void)
     tri(s, ox - 4, oy, ox + 4, oy, ox + sin(a) * len, oy - cos(a) * len,
         i % 2 ? BRASS_DARK : BRASS_COL);
   }
-  rrect(s, cx - 14, CAB_DIAL_Y - 28, cx + 14, CAB_DIAL_Y - 14 + 14, 14, BRASS_COL, 2, BRASS_DARK);
+  brass_rrect(s, cx - 14, CAB_DIAL_Y - 28, cx + 14, CAB_DIAL_Y, 14);
 
   /* brass bezel around the dial, rounded top */
-  rrect(s, CAB_DIAL_X - 14, CAB_DIAL_Y - 14, CAB_DIAL_X + 644 + 14, CAB_DIAL_Y + 428 + 14,
-        16, BRASS_COL, 2, BRASS_DARK);
-  rrect(s, CAB_DIAL_X - 10, CAB_DIAL_Y - 12, CAB_DIAL_X + 644 + 10, CAB_DIAL_Y - 7,
-        3, BRASS_LITE, 0, 0);
+  brass_rrect(s, CAB_DIAL_X - 14, CAB_DIAL_Y - 14, CAB_DIAL_X + 644 + 14,
+              CAB_DIAL_Y + 428 + 14, 16);
   rrect(s, CAB_DIAL_X - 4, CAB_DIAL_Y - 4, CAB_DIAL_X + 644 + 4, CAB_DIAL_Y + 428 + 4,
         6, BRASS_DARK, 0, 0);
 
@@ -242,23 +309,44 @@ static void draw_symbol(SDL_Surface *s, int k, double cx, double cy, uint32_t co
   }
 }
 
-/* one Bakelite key with brass rim; 'down' = pressed look */
+/*
+ * One Bakelite key: mottled brown, slightly domed (lighter top, darker
+ * bottom), thin brass rim. The symbol is engraved and filled with aged
+ * ivory: a dark cut above, a light lip below, then the inlay.
+ */
 static SDL_Surface *draw_key(int k, int down)
 {
   SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, KEY_W, KEY_H + PRESS_DY, 32,
                                                   SDL_PIXELFORMAT_ARGB8888);
   double dy = down ? PRESS_DY : 0;
   double bottom = KEY_H - 6 + dy + (down ? 3 : 0);
+  double cx = KEY_W / 2.0, cy = (KEY_H - 6) / 2.0 + dy + 2;
+  double dim = down ? 0.78 : 1.0;
+  int x, y;
 
   if (s == NULL)
     return NULL;
   SDL_FillRect(s, NULL, 0);
-  /* side (depth), face with brass rim, glossy highlight */
-  rrect(s, 0, dy + 4, KEY_W, KEY_H + dy, 9, down ? 0x160b05 : 0x1c0e06, 0, 0);
-  rrect(s, 0, dy, KEY_W, bottom, 9, down ? KEY_DN : KEY_COL, 2, down ? BRASS_DARK : BRASS_COL);
-  rrect(s, 6, dy + 4, KEY_W - 6, dy + 12, 4, down ? 0x3a2414 : 0x6e4428, 0, 0);
-  rrect(s, 10, dy + 5, KEY_W / 2.0, dy + 8, 2, down ? 0x4a3020 : 0x9a6a44, 0, 0);
-  draw_symbol(s, k, KEY_W / 2.0, (KEY_H - 6) / 2.0 + dy + 2, down ? SYMBOL_DN : SYMBOL_COL);
+  rrect(s, 0, dy + 4, KEY_W, KEY_H + dy, 9, 0x140904, 0, 0);          /* depth */
+  for (y = 0; y < KEY_H + PRESS_DY; y++)
+    for (x = 0; x < KEY_W; x++) {
+      double d = sd_rrect(x + 0.5, y + 0.5, 0, dy, KEY_W, bottom, 9);
+      double v, m, dome, hl;
+      if (d > 1)
+        continue;
+      v = (y - dy) / (bottom - dy);                                    /* 0 top .. 1 bottom */
+      m = fbm(x * 0.09 + k * 13.0, y * 0.09) - 0.5;                     /* mottling */
+      dome = 1.18 - 0.42 * v;
+      hl = 0.22 * exp(-pow((x - KEY_W * 0.38) / 16.0, 2) - pow((v - 0.16) / 0.09, 2));
+      blend(s, x, y, rgbf((70 + 40 * m) * dome * dim + 255 * hl * dim,
+                          (40 + 22 * m) * dome * dim + 220 * hl * dim,
+                          (22 + 12 * m) * dome * dim + 170 * hl * dim), 0.5 - d);
+      if (d > -2.2)                                                    /* brass rim */
+        blend(s, x, y, down ? BRASS_DARK : BRASS_COL, (0.5 - d) * (d > -1.2 ? 0.9 : 0.4));
+    }
+  draw_symbol(s, k, cx, cy - 1, 0x120804);                             /* cut */
+  draw_symbol(s, k, cx, cy + 1, rgbf(150 * dim, 110 * dim, 75 * dim)); /* lower lip */
+  draw_symbol(s, k, cx, cy, rgbf(222 * dim, 206 * dim, 165 * dim));    /* inlay */
   return s;
 }
 
