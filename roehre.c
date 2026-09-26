@@ -895,6 +895,16 @@ static double eye_opening(void)
   }
 }
 
+/* uniform scale and offset that fit an lw x lh picture centred into ww x wh
+   (the same letterbox SDL_RenderSetLogicalSize uses) */
+static void letterbox(int ww, int wh, int lw, int lh, double *sc, double *ox, double *oy)
+{
+  double sx = (double)ww / lw, sy = (double)wh / lh;
+  *sc = sx < sy ? sx : sy;
+  *ox = (ww - lw * *sc) / 2;
+  *oy = (wh - lh * *sc) / 2;
+}
+
 /*
  * Cut the window to the outline of the case, so there are no dark
  * corners around the rounded top (X11 SHAPE extension; on Wayland or
@@ -909,6 +919,7 @@ static void apply_shape(int on, int w, int h)
   SDL_Surface *m;
   XRectangle *rects;
   int x, y, n = 0, cap, ww, wh;
+  double sc, ox, oy;
 
   SDL_VERSION(&info.version);
   if (!SDL_GetWindowWMInfo(window, &info) || info.subsystem != SDL_SYSWM_X11)
@@ -927,6 +938,7 @@ static void apply_shape(int on, int w, int h)
     ww = w;
     wh = h;
   }
+  letterbox(ww, wh, m->w, m->h, &sc, &ox, &oy);
   cap = 4 * m->h;
   rects = malloc(sizeof(*rects) * (size_t)cap);
   for (y = 0; rects != NULL && y < m->h; y++) {  /* one rectangle per run */
@@ -944,10 +956,11 @@ static void apply_shape(int on, int w, int h)
         rects = more;
       }
       /* scale the logical mask to the real window size */
-      rects[n].x = (short)(x0 * ww / m->w);
-      rects[n].y = (short)(y * wh / m->h);
-      rects[n].width = (unsigned short)((x * ww / m->w) - rects[n].x);
-      rects[n].height = (unsigned short)(((y + 1) * wh / m->h) - rects[n].y);
+      /* same uniform scale and centring as the renderer's letterbox */
+      rects[n].x = (short)floor(ox + x0 * sc);
+      rects[n].y = (short)floor(oy + y * sc);
+      rects[n].width = (unsigned short)(floor(ox + x * sc) - rects[n].x);
+      rects[n].height = (unsigned short)(floor(oy + (y + 1) * sc) - rects[n].y);
       if (rects[n].width > 0 && rects[n].height > 0)
         n++;
     }
@@ -980,7 +993,15 @@ static SDL_HitTestResult hit_test(SDL_Window *win, const SDL_Point *pt, void *da
   {
     /* resize grips on the case (inside its outline, logical units):
        the side edges and the lower corners of the wooden body */
-    int lx = pt->x * CAB_W / ww, ly = pt->y * CAB_H / wh;
+    double sc, ox, oy;
+    int lx, ly;
+    letterbox(ww, wh, CAB_W, CAB_H, &sc, &ox, &oy);
+    lx = (int)((pt->x - ox) / sc);
+    ly = (int)((pt->y - oy) / sc);
+    if (lx < 0 || ly < 0 || lx >= CAB_W || ly >= CAB_H)
+      return SDL_HITTEST_NORMAL;               /* beside the case (maximized) */
+    if (SDL_GetWindowFlags(win) & SDL_WINDOW_MAXIMIZED)
+      return cabinet_hit(lx, ly) == CAB_HIT_NONE ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
     int left = lx < 18, right = lx >= CAB_W - 18;
     int low = ly >= CAB_H - 70;
     if (low && lx >= CAB_W - 44)
@@ -1006,6 +1027,14 @@ static void window_resized(int w, int h)
   int lw = cabinet_on ? CAB_W : WIN_WIDTH, lh = cabinet_on ? CAB_H : WIN_HEIGHT;
   int want = w * lh / lw;
 
+  /* maximized / docked by the window manager: keep its size, draw the
+     radio as large as fits and centred (letterbox), cut the shape to it */
+  if (SDL_GetWindowFlags(window) & SDL_WINDOW_MAXIMIZED) {
+    if (shaped)
+      apply_shape(cabinet_on, w, h);
+    refresh_now = 1;
+    return;
+  }
   scale_milli = w * 1000 / lw;
   if (abs(want - h) > 2) {
     SDL_SetWindowSize(window, w, want);  /* comes back as another event */
