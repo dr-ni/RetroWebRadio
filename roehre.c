@@ -534,7 +534,7 @@ static void draw_grid(void)
 
 static void draw_stations(void)
 {
-  const SDL_Color normal = { 68, 156, 108, 255 };      /* backlit mint green */
+  const SDL_Color normal = { 96, 206, 146, 255 };      /* backlit mint green */
   const SDL_Color highlight = { 200, 210, 170, 255 };
   const struct page *p = page_now();
   int i, w, h;
