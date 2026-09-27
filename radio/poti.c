@@ -102,13 +102,15 @@ static void open_display(void)
 #define gpio_read(p) digitalRead(p)
 #endif
 
-enum { NONE, LEFT_1, LEFT_2, LEFT_3, RIGHT_1, RIGHT_2, RIGHT_3 };
-static int state = NONE;
 /* DT and CLK interrupts arrive in separate threads */
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static int verbose = 0;         /* -v: print every DT/CLK change */
+static int steps_per_detent = 4; /* -s 2 for encoders that also rest at DT=CLK=0 */
 
 static void turned(int right)
 {
+  if (verbose)
+    fprintf(stderr, NAME " knob: step %s\n", right ? "right" : "left");
 #if USE_X11
   send_key(right ? KEY_RIGHT : KEY_LEFT);
 #else
@@ -117,37 +119,42 @@ static void turned(int right)
 #endif
 }
 
-/* quadrature state machine: DT/CLK 11 -> 10 -> 00 -> 01 = one step "right",
- * 11 -> 01 -> 00 -> 10 = one step "left" */
+/*
+ * Quadrature decoder with a transition table. state = DT<<1 | CLK;
+ * one full detent "right" is 11 -> 10 -> 00 -> 01 -> 11, "left" the
+ * reverse. Every valid transition counts +-1, invalid ones (bounce,
+ * missed edge) count 0; a step is reported after steps_per_detent counts.
+ * The count is re-synchronised at the rest position 11.
+ */
 static void rotation(void)
 {
-  int dt, clk;
+  static const signed char delta[16] = {
+    /* prev 0 (00): */ 0, +1, -1, 0,
+    /* prev 1 (01): */ -1, 0, 0, +1,
+    /* prev 2 (10): */ +1, 0, 0, -1,
+    /* prev 3 (11): */ 0, -1, +1, 0,
+  };
+  static int prev = -1, count = 0;
+  int cur;
 
   pthread_mutex_lock(&lock);
-  dt = gpio_read(PIN_DT);
-  clk = gpio_read(PIN_CLK);
-
-  if (dt && clk)
-    state = NONE;
-  else if (!dt && clk) {
-    if (state == NONE)
-      state = LEFT_1;
-    else if (state == RIGHT_2) {
-      state = RIGHT_3;
+  cur = (gpio_read(PIN_DT) ? 2 : 0) | (gpio_read(PIN_CLK) ? 1 : 0);
+  if (prev < 0)
+    prev = cur;
+  if (cur != prev) {
+    count += delta[prev << 2 | cur];
+    if (verbose)
+      fprintf(stderr, NAME " knob: DT=%d CLK=%d count=%d\n", cur >> 1, cur & 1, count);
+    if (count >= steps_per_detent) {
       turned(1);
-    }
-  } else if (dt && !clk) {
-    if (state == NONE)
-      state = RIGHT_1;
-    else if (state == LEFT_2) {
-      state = LEFT_3;
+      count = 0;
+    } else if (count <= -steps_per_detent) {
       turned(0);
+      count = 0;
+    } else if (cur == 3 && steps_per_detent == 4) {
+      count = 0;                /* back at rest without a full step: bounce */
     }
-  } else {
-    if (state == LEFT_1)
-      state = LEFT_2;
-    else if (state == RIGHT_1)
-      state = RIGHT_2;
+    prev = cur;
   }
   pthread_mutex_unlock(&lock);
 }
@@ -183,6 +190,10 @@ static int gpio_setup(void)
   gpioSetMode(PIN_DT, PI_INPUT);
   gpioSetMode(PIN_CLK, PI_INPUT);
   gpioSetMode(PIN_SW, PI_INPUT);
+  /* pull-ups on all three: works even without the module's resistors or
+     with its "+" pin not connected */
+  gpioSetPullUpDown(PIN_DT, PI_PUD_UP);
+  gpioSetPullUpDown(PIN_CLK, PI_PUD_UP);
   gpioSetPullUpDown(PIN_SW, PI_PUD_UP);
   gpioSetISRFunc(PIN_DT, EITHER_EDGE, 0, isr_rot);
   gpioSetISRFunc(PIN_CLK, EITHER_EDGE, 0, isr_rot);
@@ -197,6 +208,10 @@ static int gpio_setup(void)
   pinMode(PIN_DT, INPUT);
   pinMode(PIN_CLK, INPUT);
   pinMode(PIN_SW, INPUT);
+  /* pull-ups on all three: works even without the module's resistors or
+     with its "+" pin not connected */
+  pullUpDnControl(PIN_DT, PUD_UP);
+  pullUpDnControl(PIN_CLK, PUD_UP);
   pullUpDnControl(PIN_SW, PUD_UP);
   wiringPiISR(PIN_DT, INT_EDGE_BOTH, rotation);
   wiringPiISR(PIN_CLK, INT_EDGE_BOTH, rotation);
@@ -205,8 +220,22 @@ static int gpio_setup(void)
 }
 #endif
 
-int main(void)
+int main(int argc, char *argv[])
 {
+  int opt;
+
+  while ((opt = getopt(argc, argv, "vs:h")) != -1) {
+    switch (opt) {
+    case 'v': verbose = 1; break;
+    case 's': steps_per_detent = atoi(optarg) == 2 ? 2 : 4; break;
+    default:
+      fprintf(stderr, "usage: %s [-v] [-s 2|4]\n"
+              "  -v  show every DT/CLK change and each step\n"
+              "  -s  counts per detent: 4 (default, rests at DT=CLK=1) or 2\n"
+              "      (encoders that rest at DT=CLK=1 and DT=CLK=0)\n", argv[0]);
+      return opt == 'h' ? 0 : 1;
+    }
+  }
 #if USE_X11
   open_display();
 #endif

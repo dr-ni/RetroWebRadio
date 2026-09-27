@@ -25,8 +25,14 @@ with `raspi-config` → Advanced → Wayland, or run roehre via XWayland with
 | middle | GPIO24 (pin 18) | GPIO23 (pin 16) | GPIO25 (pin 22) |
 | right | GPIO6 (pin 31) | GPIO13 (pin 33) | GPIO5 (pin 29) |
 
-`+` of each KY-040 to 3.3 V, `GND` to ground. The switch pins use the
-internal pull-up; DT/CLK use the pull-ups on the KY-040 board.
+`+` of each KY-040 to 3.3 V (never 5 V), `GND` to ground. All three pins
+use the Pi's internal pull-ups as well, so modules without resistors work.
+
+Testing a knob: run it in the foreground with `-v`, e.g. `./lpoti -v`; every
+DT/CLK change and each detected step is printed. If only every second detent
+is counted (encoders that also rest at DT=CLK=0), start it with `-s 2`.
+Without the daemons, `gpiomon -c gpiochip0 -e both --bias pull-up 22 27 26`
+(package gpiod) shows the raw edges.
 
 ## Build and install
 
