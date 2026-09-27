@@ -4,7 +4,7 @@
  *
  * One source for the three knobs; the Makefile builds
  *
- *   lpoti  (-DPOTI_L)  left knob:   volume +/- via mpc,    push -> lpush
+ *   lpoti  (-DPOTI_L)  left knob:   volume via mpc (clockwise louder), push -> lpush
  *   mpoti  (-DPOTI_M)  middle knob: key Up/Down  (page),   push -> mpush
  *   rpoti  (-DPOTI_R)  right knob:  key Left/Right (tune), push -> rpush
  *
@@ -117,7 +117,9 @@ static void turned(int right)
 #if USE_X11
   send_key(right ? KEY_RIGHT : KEY_LEFT);
 #else
-  if (system(right ? "/usr/bin/mpc -q volume +2" : "/usr/bin/mpc -q volume -2") != 0)
+  /* the decoder's "right" (count up) is counter-clockwise with the usual
+     KY-040 wiring, so it lowers the volume */
+  if (system(right ? "/usr/bin/mpc -q volume -2" : "/usr/bin/mpc -q volume +2") != 0)
     fprintf(stderr, "mpc volume failed\n");
 #endif
 }
