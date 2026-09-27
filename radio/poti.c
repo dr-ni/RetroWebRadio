@@ -4,7 +4,7 @@
  *
  * One source for the three knobs; the Makefile builds
  *
- *   lpoti  (-DPOTI_L)  left knob:   volume -/+ via mpc,    push -> lpush
+ *   lpoti  (-DPOTI_L)  left knob:   volume +/- via mpc,    push -> lpush
  *   mpoti  (-DPOTI_M)  middle knob: key Up/Down  (page),   push -> mpush
  *   rpoti  (-DPOTI_R)  right knob:  key Left/Right (tune), push -> rpush
  *
@@ -106,15 +106,18 @@ static void open_display(void)
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int verbose = 0;         /* -v: print every DT/CLK change */
 static int steps_per_detent = 4; /* -s 2 for encoders that also rest at DT=CLK=0 */
+static int reverse = 0;          /* -r: swap the turning direction */
 
 static void turned(int right)
 {
+  if (reverse)
+    right = !right;
   if (verbose)
     fprintf(stderr, NAME " knob: step %s\n", right ? "right" : "left");
 #if USE_X11
   send_key(right ? KEY_RIGHT : KEY_LEFT);
 #else
-  if (system(right ? "/usr/bin/mpc -q volume -2" : "/usr/bin/mpc -q volume +2") != 0)
+  if (system(right ? "/usr/bin/mpc -q volume +2" : "/usr/bin/mpc -q volume -2") != 0)
     fprintf(stderr, "mpc volume failed\n");
 #endif
 }
@@ -224,13 +227,15 @@ int main(int argc, char *argv[])
 {
   int opt;
 
-  while ((opt = getopt(argc, argv, "vs:h")) != -1) {
+  while ((opt = getopt(argc, argv, "vrs:h")) != -1) {
     switch (opt) {
     case 'v': verbose = 1; break;
+    case 'r': reverse = 1; break;
     case 's': steps_per_detent = atoi(optarg) == 2 ? 2 : 4; break;
     default:
-      fprintf(stderr, "usage: %s [-v] [-s 2|4]\n"
+      fprintf(stderr, "usage: %s [-v] [-r] [-s 2|4]\n"
               "  -v  show every DT/CLK change and each step\n"
+              "  -r  reverse the turning direction\n"
               "  -s  counts per detent: 4 (default, rests at DT=CLK=1) or 2\n"
               "      (encoders that rest at DT=CLK=1 and DT=CLK=0)\n", argv[0]);
       return opt == 'h' ? 0 : 1;

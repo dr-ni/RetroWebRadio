@@ -31,6 +31,7 @@ use the Pi's internal pull-ups as well, so modules without resistors work.
 Testing a knob: run it in the foreground with `-v`, e.g. `./lpoti -v`; every
 DT/CLK change and each detected step is printed. If only every second detent
 is counted (encoders that also rest at DT=CLK=0), start it with `-s 2`.
+If a knob turns the wrong way, start it with `-r` (or swap DT and CLK).
 Without the daemons, `gpiomon -c gpiochip0 -e both --bias pull-up 22 27 26`
 (package gpiod) shows the raw edges.
 
