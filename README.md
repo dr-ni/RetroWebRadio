@@ -125,6 +125,10 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | p, space, play key | play / pause |
 | g | radio cabinet on/off |
 | n | tuning static on/off |
+
+roehre also takes commands from the control FIFO `$XDG_RUNTIME_DIR/retrowebradio.ctl`
+(one per line): `tune +N|-N`, `scan +1|-1`, `page +1|-1`, `volume +N|-N`, `play`, `mute`,
+`show`, `hide`, `toggle`, `radio`, `display`. The knob daemon `radio/potid.py` uses it.
 | mouse wheel | tune |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |

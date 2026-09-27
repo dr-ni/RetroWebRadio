@@ -1,0 +1,13 @@
+# systemd user service for the knobs:
+#   cp potid.service ~/.config/systemd/user/ && systemctl --user enable --now potid
+[Unit]
+Description=RetroWebRadio knobs (potid.py)
+After=default.target
+
+[Service]
+ExecStart=/home/radio/radio/potid.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

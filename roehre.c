@@ -1319,6 +1319,106 @@ static void adopt_playing_station(void)
 static char visible_file[PATH_MAX + 32];
 static int published_visible = -1;
 
+/*
+ * Control FIFO $XDG_RUNTIME_DIR/retrowebradio.ctl: one command per line,
+ * written by radio/potid.py (the knobs) or anything else, e.g.
+ *   echo "tune +1" > $XDG_RUNTIME_DIR/retrowebradio.ctl
+ * Commands: tune +N|-N (steps), scan +1|-1, page +1|-1, volume +N|-N,
+ * play (play/pause), mute, show, hide, toggle, radio, display.
+ * Works without X11 input (Wayland) and with a hidden window.
+ */
+static char ctl_path[PATH_MAX + 32];
+static int ctl_fd = -1, ctl_keep = -1;
+static char ctl_buf[256];
+static size_t ctl_len;
+
+static void ctl_open(void)
+{
+  const char *dir = getenv("XDG_RUNTIME_DIR");
+
+  if (dir != NULL && dir[0] == '/')
+    snprintf(ctl_path, sizeof(ctl_path), "%s/retrowebradio.ctl", dir);
+  else
+    snprintf(ctl_path, sizeof(ctl_path), "/tmp/retrowebradio-%u.ctl", (unsigned)getuid());
+  unlink(ctl_path);
+  if (mkfifo(ctl_path, 0600) != 0) {
+    perror(ctl_path);
+    ctl_path[0] = '\0';
+    return;
+  }
+  ctl_fd = open(ctl_path, O_RDONLY | O_NONBLOCK);
+  ctl_keep = open(ctl_path, O_WRONLY | O_NONBLOCK);  /* no EOF when writers close */
+}
+
+static void ctl_command(char *line)
+{
+  char cmd[32];
+  int n = 0;
+
+  if (sscanf(line, "%31s %d", cmd, &n) < 1)
+    return;
+  if (!strcmp(cmd, "tune")) {
+    search_dir = 0;
+    move_tuner((n ? n : 1) * KEY_STEP);
+  } else if (!strcmp(cmd, "scan")) {
+    search_dir = n < 0 ? -1 : +1;
+  } else if (!strcmp(cmd, "page")) {
+    search_dir = 0;
+    page_step(n < 0 ? -1 : +1);
+  } else if (!strcmp(cmd, "volume")) {
+    change_volume(n ? n : 2);
+  } else if (!strcmp(cmd, "play")) {
+    play_pause();
+  } else if (!strcmp(cmd, "mute")) {
+    mpc_toggle_mute();
+  } else if (!strcmp(cmd, "show")) {
+    window_request = WIN_SHOW;
+  } else if (!strcmp(cmd, "hide")) {
+    window_request = WIN_HIDE;
+  } else if (!strcmp(cmd, "toggle")) {
+    window_request = WIN_TOGGLE;
+  } else if (!strcmp(cmd, "radio")) {
+    window_request = WIN_RADIO;
+  } else if (!strcmp(cmd, "display")) {
+    window_request = WIN_DISPLAY;
+  } else {
+    fprintf(stderr, "control: unknown command '%s'\n", cmd);
+    return;
+  }
+  refresh_now = 1;
+}
+
+static void ctl_poll(void)
+{
+  ssize_t r;
+  char *nl;
+
+  if (ctl_fd < 0)
+    return;
+  while ((r = read(ctl_fd, ctl_buf + ctl_len, sizeof(ctl_buf) - 1 - ctl_len)) > 0) {
+    ctl_len += (size_t)r;
+    ctl_buf[ctl_len] = '\0';
+    while ((nl = strchr(ctl_buf, '\n')) != NULL) {
+      *nl = '\0';
+      ctl_command(ctl_buf);
+      ctl_len -= (size_t)(nl + 1 - ctl_buf);
+      memmove(ctl_buf, nl + 1, ctl_len + 1);
+    }
+    if (ctl_len >= sizeof(ctl_buf) - 1)
+      ctl_len = 0;  /* overlong line: drop */
+  }
+}
+
+static void ctl_close(void)
+{
+  if (ctl_fd >= 0)
+    close(ctl_fd);
+  if (ctl_keep >= 0)
+    close(ctl_keep);
+  if (ctl_path[0] != '\0')
+    unlink(ctl_path);
+}
+
 static void init_visible_file(void)
 {
   const char *dir = getenv("XDG_RUNTIME_DIR");
@@ -1560,6 +1660,7 @@ int main(int argc, char *argv[])
   fprintf(stderr, "started...\n");
   adopt_playing_station();
   init_visible_file();
+  ctl_open();
 
   while (running && !stop_requested) {
     t = now_ms();
@@ -1569,6 +1670,7 @@ int main(int argc, char *argv[])
       handle_window_request(req);
     }
     running = process_events();
+    ctl_poll();
     publish_visibility();
     scan_step();
     if (knob_dir != 0 && t >= knob_next) {  /* knob held down */
@@ -1615,6 +1717,7 @@ int main(int argc, char *argv[])
   save_position();
   if (visible_file[0] != '\0')
     unlink(visible_file);
+  ctl_close();
 
   if (tune_pid > 0)
     waitpid(tune_pid, NULL, 0);  /* let a pending tuning finish */

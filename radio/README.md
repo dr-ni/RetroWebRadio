@@ -35,6 +35,25 @@ If a knob turns the wrong way, start it with `-r` (or swap DT and CLK).
 Without the daemons, `gpiomon -c gpiochip0 -e both --bias pull-up 22 27 26`
 (package gpiod) shows the raw edges.
 
+## potid.py: one daemon for all knobs (recommended)
+
+`potid.py` handles all three knobs in Python with gpiozero (preinstalled on
+Raspberry Pi OS, all models including the Pi 5). It needs neither wiringPi nor
+pigpio and no X11 key events: tuning and page changes go to roehre through its
+control FIFO (`$XDG_RUNTIME_DIR/retrowebradio.ctl`), so the knobs work under
+Wayland and while the radio window is hidden. Volume goes to mpc directly.
+
+```sh
+make install-py                   # potid.py and scripts to RADIO_DIR, no wiringPi needed
+./potid.py -v                     # test in the foreground
+cp potid.service ~/.config/systemd/user/ && systemctl --user enable --now potid
+```
+
+Pins, wiring direction and the action of each knob are in the table at the
+top of `potid.py`. `startpoti.sh` starts potid.py; `POTI=c startpoti.sh` starts
+the C daemons below instead. Any program can send commands to the FIFO too,
+e.g. `echo "scan +1" > $XDG_RUNTIME_DIR/retrowebradio.ctl` (see roehre.c).
+
 ## Build and install
 
 ```sh
