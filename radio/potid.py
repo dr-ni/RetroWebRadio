@@ -30,7 +30,7 @@ KNOBS = {
                  push=("script", "lpush")),
     "middle": dict(pins=(24, 23, 25), reversed=True,
                    cw=("ctl", "page -1"), ccw=("ctl", "page +1"),
-                   push=("script", "mpush")),
+                   push=("ctl", "cover")),       # ("script", "mpush"): switch output
     "right": dict(pins=(6, 13, 5), reversed=True,
                   cw=("ctl", "tune +1"), ccw=("ctl", "tune -1"),
                   push=("script", "rpush")),

@@ -98,6 +98,15 @@ static TTF_Font *station_font;
 static TTF_Font *station_font_big;
 static TTF_Font *track_font;
 static TTF_Font *caption_font;
+
+/* cover view (key v / FIFO "cover"): album art of the current title */
+static int cover_view = 0;
+static SDL_Surface *cover_surf;          /* loaded cover or NULL */
+static char cover_for[TRACK_MAX];        /* title the cover belongs to */
+static char cover_file[PATH_MAX + 32];   /* BMP written by the helper */
+static pid_t cover_pid = 0;              /* running retrowebradio-cover */
+static int cover_ready = 0;              /* helper finished: load the file */
+#define COVER_SIZE 300
 static struct stationlist stations;
 
 static int xpos = 0;                  // tuner position relative to OFFSET_X
@@ -306,9 +315,93 @@ static void reap_children(void)
   pid_t pid;
   int status;
 
-  while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
     if (pid == tune_pid)
       tune_pid = 0;
+    if (pid == cover_pid) {
+      cover_pid = 0;
+      cover_ready = WIFEXITED(status) ? (WEXITSTATUS(status) == 0 ? 1 : -1) : -1;
+    }
+  }
+}
+
+/* path of the helper: next to the binary, else in $PATH */
+static const char *cover_helper(void)
+{
+  static char path[PATH_MAX + 32];
+  char exe[PATH_MAX];
+  ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+
+  if (n > 0) {
+    exe[n] = '\0';
+    snprintf(path, sizeof(path), "%s/retrowebradio-cover", dirname(exe));
+    if (access(path, X_OK) == 0)
+      return path;
+  }
+  return "retrowebradio-cover";
+}
+
+/* start fetching the cover for the current title (in the background) */
+static void request_cover(void)
+{
+  char size[16];
+  pid_t pid;
+
+  if (strcmp(cover_for, current_track) == 0 && (cover_surf != NULL || cover_pid))
+    return;                               /* have it or on the way */
+  snprintf(cover_for, sizeof(cover_for), "%s", current_track);
+  if (cover_surf != NULL) {
+    SDL_FreeSurface(cover_surf);
+    cover_surf = NULL;
+  }
+  if (cover_pid > 0)
+    kill(cover_pid, SIGTERM);             /* an older title's lookup */
+  if (current_track[0] == '\0')
+    return;
+  if (cover_file[0] == '\0') {
+    const char *dir = getenv("XDG_RUNTIME_DIR");
+    snprintf(cover_file, sizeof(cover_file), "%s/retrowebradio-cover-%u.bmp",
+             dir != NULL && dir[0] == '/' ? dir : "/tmp", (unsigned)getuid());
+  }
+  unlink(cover_file);
+  snprintf(size, sizeof(size), "%d", COVER_SIZE);
+  pid = fork();
+  if (pid == 0) {
+    int fd = open("/dev/null", O_WRONLY);
+    if (fd >= 0) {
+      dup2(fd, STDOUT_FILENO);
+      close(fd);
+    }
+    execlp(cover_helper(), "retrowebradio-cover", current_track, cover_file, size, (char *)NULL);
+    _exit(127);
+  }
+  cover_pid = pid > 0 ? pid : 0;
+  cover_ready = 0;
+}
+
+/* helper done: load the picture */
+static void cover_check(void)
+{
+  if (cover_ready == 0)
+    return;
+  if (cover_ready > 0) {
+    SDL_Surface *raw = SDL_LoadBMP(cover_file);
+    if (raw != NULL) {
+      cover_surf = SDL_ConvertSurfaceFormat(raw, SDL_PIXELFORMAT_ARGB8888, 0);
+      SDL_FreeSurface(raw);
+    }
+  }
+  cover_ready = 0;
+  refresh_now = 1;
+}
+
+static void toggle_cover(void)
+{
+  cover_view = !cover_view;
+  if (cover_view)
+    request_cover();
+  show_toast(cover_view ? "Cover" : "Skala", 800);
+  refresh_now = 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -497,6 +590,8 @@ static void get_current_track(void)
   if (strcmp(current_track, new_track) != 0) {
     snprintf(current_track, sizeof(current_track), "%s", new_track);
     refresh_now = 1;
+    if (cover_view)
+      request_cover();
   }
 }
 
@@ -548,6 +643,24 @@ static void draw_stations(void)
       continue;
     blit_text(font, name, hl ? highlight : normal,
               station_x(p, i) - w / 2, station_y(i) - (hl ? 1 : 0));
+  }
+}
+
+/* cover view: the album art in the middle, or a note while there is none */
+static void draw_cover(void)
+{
+  const SDL_Color dim = { 92, 196, 140, 255 };
+  int cy = (VISIBLE_HEIGHT - 24) / 2 + OFFSET_Y;
+
+  if (cover_surf != NULL) {
+    SDL_Rect r = { (WIN_WIDTH - cover_surf->w) / 2, cy - cover_surf->h / 2, 0, 0 };
+    SDL_BlitSurface(cover_surf, NULL, target, &r);
+  } else {
+    const char *msg = cover_pid ? "Cover wird gesucht ..." :
+                      current_track[0] ? "Kein Cover gefunden" : "Kein Titel";
+    int w = 0, h = 0;
+    if (TTF_SizeUTF8(track_font, msg, &w, &h) == 0)
+      blit_text(track_font, msg, dim, (WIN_WIDTH - w) / 2, cy - h / 2);
   }
 }
 
@@ -754,11 +867,16 @@ static void draw_everything(int full)
       SDL_BlitSurface(backplate, NULL, background, NULL);
     else
       SDL_FillRect(background, NULL, SDL_MapRGB(background->format, 0, 0, 0));
-    draw_grid();
-    draw_stations();
+    if (cover_view) {
+      draw_cover();
+    } else {
+      draw_grid();
+      draw_stations();
+      draw_tuner();
+    }
     draw_eye_caption();
-    draw_tuner();
-    bloom(background);
+    if (!cover_view)
+      bloom(background);  /* the cover stays crisp */
     target = screen;
     SDL_BlitSurface(background, NULL, screen, NULL);
   } else {
@@ -1125,6 +1243,8 @@ static int process_events(void)
         search_dir = -1;
         break;
       case SDLK_v:
+        toggle_cover();
+        break;
       case SDLK_PLUS:
       case SDLK_KP_PLUS:
       case SDLK_VOLUMEUP:
@@ -1379,6 +1499,8 @@ static void ctl_command(char *line)
     window_request = WIN_TOGGLE;
   } else if (!strcmp(cmd, "radio")) {
     window_request = WIN_RADIO;
+  } else if (!strcmp(cmd, "cover")) {
+    toggle_cover();
   } else if (!strcmp(cmd, "display")) {
     window_request = WIN_DISPLAY;
   } else {
@@ -1671,6 +1793,7 @@ int main(int argc, char *argv[])
     }
     running = process_events();
     ctl_poll();
+    cover_check();
     publish_visibility();
     scan_step();
     if (knob_dir != 0 && t >= knob_next) {  /* knob held down */

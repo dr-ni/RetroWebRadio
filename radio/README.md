@@ -9,7 +9,7 @@ On the Pi, as the radio user, in the repository:
 
 ```sh
 sudo apt install mpd mpc libsdl2-dev libsdl2-ttf-dev libxml2-dev \
-     libx11-dev libxext-dev pkg-config python3-gpiozero
+     libx11-dev libxext-dev pkg-config python3-gpiozero python3-pil
 make && make install-pi          # roehre and this folder to RADIO_DIR (/home/radio/radio)
 make autostart                   # knobs, radio at login, mpd user service
 ```
@@ -31,7 +31,7 @@ change it.
 | Knob | Turn | Push (script) |
 |------|------|---------------|
 | left | volume (clockwise louder) | `lpush`: play/pause |
-| middle | page (band) | `mpush`: switch audio output 1/2 |
+| middle | page (band) | cover view on/off (`mpush`, switching the audio output, is still available: see `potid.py`) |
 | right | tune | `rpush`: start/stop the GUI |
 
 `potid.py` handles all three knobs with gpiozero (all Pi models including the
@@ -69,7 +69,6 @@ button presses.
 | `mpd.conf`, `asoundrc` | mpd configuration with the ALSA equalizer plugin (`libasound2-plugin-equal`) |
 | `etc_raspotify_conf` | raspotify (Spotify Connect) configuration |
 | `config.txt`, `cmdline.txt`, `splash-readme`, `asplashscreen`, `splash.png` | silent boot with a splash screen |
-| `getcov.sh`, `getcovkiller.sh`, `master-*.png` | cover art for the current title via `sacad` and ImageMagick |
 | `stations*.xml`, `stations.txt` | alternative station lists (`roehre -s ...`) |
 | `check_correct_shutdown.sh` | show uptime history (`tuptime`), e.g. to verify clean shutdowns with a UPS HAT |
 | `start-youtube-music` | YouTube Music in Chromium kiosk mode |

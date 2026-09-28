@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""
+retrowebradio-cover - fetch the cover art for the current title
+
+  retrowebradio-cover "Station: Artist - Title" OUT.bmp [SIZE]
+
+Called by roehre in its cover view. Takes the title line as mpc shows it
+for streams, looks the song up with the iTunes Search API (no key needed),
+downloads the artwork, fits it into a SIZE x SIZE square (default 300) and
+writes a 24-bit BMP that roehre loads with SDL_LoadBMP. Results are cached
+in ~/.cache/retrowebradio/covers. Exit status 0: cover written, 1: none
+found (e.g. news, jingles, station IDs), 2: usage error.
+
+Needs python3-pil. Replaces the old getcov.sh (sacad + ImageMagick).
+"""
+import hashlib
+import io
+import json
+import os
+import re
+import sys
+import urllib.parse
+import urllib.request
+
+from PIL import Image
+
+TIMEOUT = 8
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                     "retrowebradio", "covers")
+MISS = b"none"   # cache marker for titles without a cover
+
+
+def split_title(line):
+    """'Station: Artist - Title' -> (artist, title) or None."""
+    if ": " in line:
+        line = line.split(": ", 1)[1]
+    for sep in (" - ", " / ", " – "):
+        if sep in line:
+            artist, title = (p.strip() for p in line.split(sep, 1))
+            # drop additions like "(Radio Edit)" or "[Live]" for the search
+            title = re.sub(r"\s*[\(\[].*?[\)\]]", "", title).strip()
+            if artist and title:
+                return artist, title
+    return None
+
+
+def lookup(artist, title):
+    """artwork URL from the iTunes Search API, or None."""
+    q = urllib.parse.urlencode({"term": f"{artist} {title}", "entity": "song", "limit": 5})
+    with urllib.request.urlopen("https://itunes.apple.com/search?" + q, timeout=TIMEOUT) as r:
+        results = json.load(r).get("results", [])
+    a = artist.lower()
+    # prefer a result whose artist matches, else the first one
+    best = next((x for x in results if a in x.get("artistName", "").lower()), None)
+    best = best or (results[0] if results else None)
+    url = best and best.get("artworkUrl100")
+    return url.replace("100x100bb", "600x600bb") if url else None
+
+
+def fit(data, size):
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    img.thumbnail((size, size), Image.LANCZOS)
+    out = Image.new("RGB", (size, size), (0, 0, 0))
+    out.paste(img, ((size - img.width) // 2, (size - img.height) // 2))
+    return out
+
+
+def main():
+    if len(sys.argv) < 3:
+        sys.stderr.write(__doc__)
+        return 2
+    line, out = sys.argv[1], sys.argv[2]
+    size = int(sys.argv[3]) if len(sys.argv) > 3 else 300
+    parts = split_title(line)
+    if parts is None:
+        return 1
+    key = hashlib.sha1(("%s\n%s\n%d" % (*parts, size)).lower().encode()).hexdigest()
+    os.makedirs(CACHE, exist_ok=True)
+    cached = os.path.join(CACHE, key + ".bmp")
+    miss = os.path.join(CACHE, key + ".none")
+    if os.path.exists(miss):
+        return 1
+    if not os.path.exists(cached):
+        try:
+            url = lookup(*parts)
+            if url is None:
+                open(miss, "wb").write(MISS)
+                return 1
+            with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
+                fit(r.read(), size).save(cached + ".tmp", "BMP")
+            os.replace(cached + ".tmp", cached)
+        except (OSError, ValueError) as e:        # network, JSON, image errors
+            sys.stderr.write("cover: %s\n" % e)
+            return 1
+    with open(cached, "rb") as src, open(out + ".tmp", "wb") as dst:
+        dst.write(src.read())
+    os.replace(out + ".tmp", out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

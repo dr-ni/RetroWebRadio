@@ -51,7 +51,7 @@ install: roehre stations.xml
 	install -d $(DESTDIR)$(PREFIX)/bin $(DESTDIR)$(DATADIR)/icons \
 	           $(DESTDIR)$(PREFIX)/share/applications \
 	           $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
-	install -m 755 roehre retrowebradio-tray $(DESTDIR)$(PREFIX)/bin/
+	install -m 755 roehre retrowebradio-tray retrowebradio-cover $(DESTDIR)$(PREFIX)/bin/
 	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(DATADIR)/
 	install -m 644 icons/*.svg $(DESTDIR)$(DATADIR)/icons/
 	install -d $(DESTDIR)$(DATADIR)/textures
@@ -66,6 +66,7 @@ install: roehre stations.xml
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/roehre $(DESTDIR)$(PREFIX)/bin/retrowebradio-tray \
+	      $(DESTDIR)$(PREFIX)/bin/retrowebradio-cover \
 	      $(DESTDIR)$(PREFIX)/share/applications/retrowebradio.desktop \
 	      $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/retrowebradio.svg
 	rm -rf $(DESTDIR)$(DATADIR)
@@ -74,7 +75,7 @@ uninstall:
 
 install-pi: roehre stations.xml
 	install -d $(DESTDIR)$(RADIO_DIR)
-	install -m 755 roehre retrowebradio-tray $(DESTDIR)$(RADIO_DIR)/
+	install -m 755 roehre retrowebradio-tray retrowebradio-cover $(DESTDIR)$(RADIO_DIR)/
 	install -m 644 VeraMono.ttf stations.xml $(DESTDIR)$(RADIO_DIR)/
 	install -d $(DESTDIR)$(RADIO_DIR)/icons
 	install -m 644 icons/*.svg $(DESTDIR)$(RADIO_DIR)/icons/

@@ -78,6 +78,14 @@ system-wide copy, so every user can keep an own station list.
 
 The window itself always carries the radio icon and the window class `retrowebradio`.
 
+## Cover view
+
+`v` (or the middle knob's button, or `cover` on the control FIFO) switches the dial to
+the album art of the current title and back. The helper `retrowebradio-cover` looks the
+song up with the iTunes Search API (no account or key needed; needs `python3-pil`), fits
+the artwork to 300x300 and caches it in `~/.cache/retrowebradio/covers`. For news,
+jingles or stations that send no "Artist - Title" it shows "Kein Cover gefunden".
+
 ## Tuning static
 
 Like a real receiver, roehre plays static between stations and mixes some static into the
@@ -120,16 +128,17 @@ or call `./stationslist2xml.sh [-n per_page] [list.txt] > stations.xml` directly
 | Left / Right | move the tuner (wraps to the previous/next page) |
 | Up / Down | next / previous page |
 | r / l | scan to the next station right / left |
-| v, +, keypad +, volume-up key | volume +3 |
+| +, keypad +, volume-up key | volume +3 |
 | -, keypad -, volume-down key | volume -3 |
 | m, mute key | mute / unmute (restores the previous volume) |
 | p, space, play key | play / pause |
+| v | cover view: album art of the current title instead of the dial |
 | g | radio cabinet on/off |
 | n | tuning static on/off |
 
 roehre also takes commands from the control FIFO `$XDG_RUNTIME_DIR/retrowebradio.ctl`
 (one per line): `tune +N|-N`, `scan +1|-1`, `page +1|-1`, `volume +N|-N`, `play`, `mute`,
-`show`, `hide`, `toggle`, `radio`, `display`. The knob daemon `radio/potid.py` uses it.
+`show`, `hide`, `toggle`, `radio`, `display`, `cover`. The knob daemon `radio/potid.py` uses it.
 | mouse wheel | tune |
 | mouse click / touch | put the tuner there |
 | q, Esc | quit |
