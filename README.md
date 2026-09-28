@@ -83,8 +83,9 @@ The window itself always carries the radio icon and the window class `retrowebra
 `v` (or the middle knob's button, or `cover` on the control FIFO) switches the dial to
 the album art of the current title and back. The helper `retrowebradio-cover` looks the
 song up with the iTunes Search API (no account or key needed; needs `python3-pil`), fits
-the artwork to 300x300 and caches it in `~/.cache/retrowebradio/covers`. For news,
-jingles or stations that send no "Artist - Title" it shows "Kein Cover gefunden".
+the artwork to 300x300 and caches it in `~/.cache/retrowebradio/covers`. While it is
+searching, and for news, jingles or stations that send no "Artist - Title", the normal
+dial stays visible.
 
 ## Tuning static
 

@@ -646,22 +646,13 @@ static void draw_stations(void)
   }
 }
 
-/* cover view: the album art in the middle, or a note while there is none */
+/* cover view: the album art in the middle (only called when there is one) */
 static void draw_cover(void)
 {
-  const SDL_Color dim = { 92, 196, 140, 255 };
   int cy = (VISIBLE_HEIGHT - 24) / 2 + OFFSET_Y;
+  SDL_Rect r = { (WIN_WIDTH - cover_surf->w) / 2, cy - cover_surf->h / 2, 0, 0 };
 
-  if (cover_surf != NULL) {
-    SDL_Rect r = { (WIN_WIDTH - cover_surf->w) / 2, cy - cover_surf->h / 2, 0, 0 };
-    SDL_BlitSurface(cover_surf, NULL, target, &r);
-  } else {
-    const char *msg = cover_pid ? "Cover wird gesucht ..." :
-                      current_track[0] ? "Kein Cover gefunden" : "Kein Titel";
-    int w = 0, h = 0;
-    if (TTF_SizeUTF8(track_font, msg, &w, &h) == 0)
-      blit_text(track_font, msg, dim, (WIN_WIDTH - w) / 2, cy - h / 2);
-  }
+  SDL_BlitSurface(cover_surf, NULL, target, &r);
 }
 
 /* "Empfang" (reception) printed under the magic eye */
@@ -867,15 +858,15 @@ static void draw_everything(int full)
       SDL_BlitSurface(backplate, NULL, background, NULL);
     else
       SDL_FillRect(background, NULL, SDL_MapRGB(background->format, 0, 0, 0));
-    if (cover_view) {
+    if (cover_view && cover_surf != NULL) {
       draw_cover();
-    } else {
+    } else {  /* dial; also in cover view while there is no cover */
       draw_grid();
       draw_stations();
       draw_tuner();
     }
     draw_eye_caption();
-    if (!cover_view)
+    if (!(cover_view && cover_surf != NULL))
       bloom(background);  /* the cover stays crisp */
     target = screen;
     SDL_BlitSurface(background, NULL, screen, NULL);
