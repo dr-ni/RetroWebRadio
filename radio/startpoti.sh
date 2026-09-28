@@ -1,19 +1,13 @@
 #!/bin/bash
-# start the knob daemon(s) and playback
-#   potid.py (default): one Python daemon for all knobs, works on X11 and Wayland
-#   POTI=c startpoti.sh: the old C daemons lpoti/mpoti/rpoti (wiringPi, X11)
+# start the knob daemon by hand (normally the potid user service does it) and playback
 RADIO_DIR=${RADIO_DIR:-/home/radio/radio}
 
-if [ "${POTI:-py}" = c ]; then
-  for p in lpoti mpoti rpoti; do
-    pgrep -x "$p" >/dev/null && continue          # never twice
-    "$RADIO_DIR/$p" > "/tmp/$p.log" 2>&1 &
-  done
+if systemctl --user is-active --quiet potid 2>/dev/null || pgrep -f "$RADIO_DIR/potid.py" >/dev/null; then
+  echo "knobs already running"
 else
-  pgrep -f "$RADIO_DIR/potid.py" >/dev/null ||
-    "$RADIO_DIR/potid.py" > /tmp/potid.log 2>&1 &
+  "$RADIO_DIR/potid.py" > /tmp/potid.log 2>&1 &
+  echo "knobs started"
 fi
-echo "knobs started"
 
 mpc enable only 1 > /dev/null 2>&1
 mpc volume 50 > /dev/null 2>&1

@@ -8,6 +8,7 @@
 #                         roehre from BINDIR (default: this directory)
 #   make install-pi       everything into RADIO_DIR (default
 #                         /home/radio/radio), the Raspberry Pi layout
+#   make autostart        knobs, radio and mpd start automatically (Pi)
 #   make -C radio         build the Raspberry Pi helpers (see radio/README.md)
 #
 # PREFIX is compiled into roehre (data directory); run 'make clean' after
@@ -79,6 +80,14 @@ install-pi: roehre stations.xml
 	install -m 644 icons/*.svg $(DESTDIR)$(RADIO_DIR)/icons/
 	install -d $(DESTDIR)$(RADIO_DIR)/textures
 	install -m 644 textures/*.bmp $(DESTDIR)$(RADIO_DIR)/textures/
+	$(MAKE) -C radio install RADIO_DIR=$(RADIO_DIR) DESTDIR=$(DESTDIR)
+
+# knobs, radio GUI and mpd started automatically (Raspberry Pi, radio user)
+autostart:
+	$(MAKE) -C radio autostart RADIO_DIR=$(RADIO_DIR)
+
+no-autostart:
+	$(MAKE) -C radio no-autostart RADIO_DIR=$(RADIO_DIR)
 
 # menu entry + icon for the current user, so the window list / taskbar
 # shows the radio icon (matched via StartupWMClass=retrowebradio)
@@ -99,4 +108,4 @@ uninstall-desktop:
 clean:
 	rm -f roehre *.o stations.xml.tmp
 
-.PHONY: all install uninstall install-pi install-desktop uninstall-desktop clean
+.PHONY: all install uninstall install-pi autostart no-autostart install-desktop uninstall-desktop clean

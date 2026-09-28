@@ -1,0 +1,12 @@
+# systemd user service for the knobs, installed by "make -C radio autostart"
+[Unit]
+Description=RetroWebRadio knobs (potid.py)
+After=default.target
+
+[Service]
+ExecStart=@RADIO_DIR@/potid.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

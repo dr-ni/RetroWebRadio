@@ -9,7 +9,8 @@ It is a complete overwork of the initially made version in order to remove bugs 
 It shows the stations like the dial of an old tube radio; move the tuner over a station and after one second it starts playing.
 
 The `radio/` folder contains everything needed to build the complete radio on a Raspberry Pi:
-three KY-040 rotary encoder daemons (volume, page, tuning), helper scripts and boot/mpd configuration.
+a daemon for three KY-040 rotary encoders (volume, page, tuning), helper scripts, boot/mpd
+configuration and `make install-pi && make autostart` to set it all up.
 
 ## Requirements
 

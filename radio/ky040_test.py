@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple test for the three KY-040 knobs of RetroWebRadio (gpiozero, works
-on all Pi models incl. Pi 5). Stop lpoti/mpoti/rpoti first.
+on all Pi models incl. Pi 5). Stop potid first (systemctl --user stop potid).
 
   python3 ky040_test.py            all three knobs
   python3 ky040_test.py left -v    one knob, also print every DT/CLK change

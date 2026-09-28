@@ -2,15 +2,13 @@
 """
 potid.py - one daemon for the three KY-040 knobs of RetroWebRadio.
 
-Replaces lpoti/mpoti/rpoti: no wiringPi/pigpio, no X11 key events.
+No wiringPi/pigpio, no X11 key events.
 Uses gpiozero (preinstalled on Raspberry Pi OS, all models incl. Pi 5)
 and talks to roehre through its control FIFO, so the knobs also work
 under Wayland and while the radio window is hidden.
 
-  potid.py          run (e.g. from startpoti.sh or potid.service)
+  potid.py          run (normally as systemd user service: make autostart)
   potid.py -v       also print every step and button press
-
-Stop lpoti/mpoti/rpoti first; they would hold the same pins.
 """
 import os
 import subprocess

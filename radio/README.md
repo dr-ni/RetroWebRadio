@@ -3,19 +3,45 @@
 This folder turns a Raspberry Pi with a small display, three KY-040 rotary
 encoders and an audio output into a stand-alone web radio around `roehre`.
 
+## Setup
+
+On the Pi, as the radio user, in the repository:
+
+```sh
+sudo apt install mpd mpc libsdl2-dev libsdl2-ttf-dev libxml2-dev \
+     libx11-dev libxext-dev pkg-config python3-gpiozero
+make && make install-pi          # roehre and this folder to RADIO_DIR (/home/radio/radio)
+make autostart                   # knobs, radio at login, mpd user service
+```
+
+`make autostart` (also `make -C radio autostart`):
+
+- installs the knob daemon `potid.py` as systemd user service `potid`
+  (`systemctl --user status potid`, `journalctl --user -u potid -f`),
+- starts `roehre -f -d 2` at login via `~/.config/autostart`
+  (other options: `make autostart GUI_ARGS="-f -g"`),
+- enables the mpd user service if `~/.config/mpd/mpd.conf` exists,
+- enables lingering, so the services also run without a login.
+
+`make no-autostart` undoes it. Use the same `RADIO_DIR=...` everywhere if you
+change it.
+
 ## Knobs
 
-| Knob | Turn | Push (script) | Daemon |
-|------|------|---------------|--------|
-| left | volume -/+ (mpc) | `lpush`: play/pause | `lpoti` |
-| middle | page up/down | `mpush`: switch audio output 1/2 | `mpoti` |
-| right | tune left/right | `rpush`: start/stop the GUI | `rpoti` |
+| Knob | Turn | Push (script) |
+|------|------|---------------|
+| left | volume (clockwise louder) | `lpush`: play/pause |
+| middle | page (band) | `mpush`: switch audio output 1/2 |
+| right | tune | `rpush`: start/stop the GUI |
 
-`mpoti` and `rpoti` send fake X11 key presses (XTest) to the focused
-window, i.e. to `roehre`. The GUI therefore has to run on X11 (on a
-Wayland desktop such as Raspberry Pi OS Bookworm's default, switch to X11
-with `raspi-config` → Advanced → Wayland, or run roehre via XWayland with
-`SDL_VIDEODRIVER=x11`).
+`potid.py` handles all three knobs with gpiozero (all Pi models including the
+Pi 5, no wiringPi/pigpio). Volume goes to mpc directly; tuning and page
+changes go to roehre through its control FIFO
+(`$XDG_RUNTIME_DIR/retrowebradio.ctl`), so the knobs work on X11 and
+Wayland and while the radio window is hidden. Pins, wiring direction and the
+action of each knob are in the table at the top of `potid.py`.
+`./potid.py -v` prints every step. Any program can send commands to the FIFO,
+e.g. `echo "scan +1" > $XDG_RUNTIME_DIR/retrowebradio.ctl` (see roehre.c).
 
 ### Wiring (BCM numbers)
 
@@ -25,60 +51,21 @@ with `raspi-config` → Advanced → Wayland, or run roehre via XWayland with
 | middle | GPIO24 (pin 18) | GPIO23 (pin 16) | GPIO25 (pin 22) |
 | right | GPIO6 (pin 31) | GPIO13 (pin 33) | GPIO5 (pin 29) |
 
-`+` of each KY-040 to 3.3 V (never 5 V), `GND` to ground. All three pins
-use the Pi's internal pull-ups as well, so modules without resistors work.
+`+` of each KY-040 to 3.3 V (never 5 V), `GND` to ground. The internal
+pull-ups are switched on, so modules without resistors work too. Middle and
+right are wired with DT/CLK the other way round than left; `potid.py` and
+`ky040_test.py` know that.
 
-Testing a knob: run it in the foreground with `-v`, e.g. `./lpoti -v`; every
-DT/CLK change and each detected step is printed. If only every second detent
-is counted (encoders that also rest at DT=CLK=0), start it with `-s 2`.
-If a knob turns the wrong way, start it with `-r` (or swap DT and CLK).
-Without the daemons, `gpiomon -c gpiochip0 -e both --bias pull-up 22 27 26`
-(package gpiod) shows the raw edges.
-
-## potid.py: one daemon for all knobs (recommended)
-
-`potid.py` handles all three knobs in Python with gpiozero (preinstalled on
-Raspberry Pi OS, all models including the Pi 5). It needs neither wiringPi nor
-pigpio and no X11 key events: tuning and page changes go to roehre through its
-control FIFO (`$XDG_RUNTIME_DIR/retrowebradio.ctl`), so the knobs work under
-Wayland and while the radio window is hidden. Volume goes to mpc directly.
-
-```sh
-make install-py                   # potid.py and scripts to RADIO_DIR, no wiringPi needed
-./potid.py -v                     # test in the foreground
-cp potid.service ~/.config/systemd/user/ && systemctl --user enable --now potid
-```
-
-Pins, wiring direction and the action of each knob are in the table at the
-top of `potid.py`. `startpoti.sh` starts potid.py; `POTI=c startpoti.sh` starts
-the C daemons below instead. Any program can send commands to the FIFO too,
-e.g. `echo "scan +1" > $XDG_RUNTIME_DIR/retrowebradio.ctl` (see roehre.c).
-
-## Build and install
-
-```sh
-sudo apt install libx11-dev libxtst-dev
-# plus wiringPi (.deb from github.com/WiringPi/WiringPi/releases)
-# or pigpio (sudo apt install pigpio; not supported on the Pi 5)
-make                    # sendkey, lpoti, mpoti, rpoti (wiringPi)
-make PIGPIO=1           # same with pigpio (daemons must run as root)
-make install            # to RADIO_DIR, default /home/radio/radio
-make -C .. install-pi   # roehre, font and stations.xml to the same place
-```
-
-Use the same `RADIO_DIR=...` for both installs if you change it; the
-daemons find `lpush`/`mpush`/`rpush` there, and the scripts honour the
-`RADIO_DIR` environment variable.
-
-`startpoti.sh` starts the three daemons and playback; call it from the
-desktop autostart together with `roehre -f`.
+Testing: stop potid (`systemctl --user stop potid`), then
+`./ky040_test.py [left|middle|right] [-v] [-r]` shows rest levels, steps and
+button presses.
 
 ## Other files
 
 | File | Purpose |
 |------|---------|
-| `ky040_test.py` | test the knobs: `./ky040_test.py [left|middle|right] [-v] [-r]` shows rest levels, steps and button presses |
-| `sendkey` | send a key to the GUI from scripts, e.g. `sendkey l` (scan left), `sendkey Right`, `sendkey v` |
+| `ky040_test.py` | knob test (see above) |
+| `startpoti.sh` | start potid.py by hand and playback (without the service) |
 | `mpd.conf`, `asoundrc` | mpd configuration with the ALSA equalizer plugin (`libasound2-plugin-equal`) |
 | `etc_raspotify_conf` | raspotify (Spotify Connect) configuration |
 | `config.txt`, `cmdline.txt`, `splash-readme`, `asplashscreen`, `splash.png` | silent boot with a splash screen |

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RetroWebRadio
+Comment=Start the radio at login (installed by "make -C radio autostart")
+Exec=@RADIO_DIR@/roehre @GUI_ARGS@
+Icon=retrowebradio
+Terminal=false
+X-GNOME-Autostart-enabled=true
