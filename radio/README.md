@@ -77,14 +77,12 @@ desktop autostart together with `roehre -f`.
 
 | File | Purpose |
 |------|---------|
+| `ky040_test.py` | test the knobs: `./ky040_test.py [left|middle|right] [-v] [-r]` shows rest levels, steps and button presses |
 | `sendkey` | send a key to the GUI from scripts, e.g. `sendkey l` (scan left), `sendkey Right`, `sendkey v` |
 | `mpd.conf`, `asoundrc` | mpd configuration with the ALSA equalizer plugin (`libasound2-plugin-equal`) |
 | `etc_raspotify_conf` | raspotify (Spotify Connect) configuration |
 | `config.txt`, `cmdline.txt`, `splash-readme`, `asplashscreen`, `splash.png` | silent boot with a splash screen |
 | `getcov.sh`, `getcovkiller.sh`, `master-*.png` | cover art for the current title via `sacad` and ImageMagick |
-| `mpdevent.c`, `mpdevent.sh` | print title changes (`make mpdevent`, needs libmpd) |
-| `icompd`, `mpdicon.py` | GTK tray icons for mpd (volume, play/pause) |
-| `stations2xml.sh`, `getstationbyname.sh` | older station list generator using the legacy Shoutcast API |
-| `stations*.xml` | alternative station lists (`roehre -s ...`) |
+| `stations*.xml`, `stations.txt` | alternative station lists (`roehre -s ...`) |
 | `check_correct_shutdown.sh` | show uptime history (`tuptime`), e.g. to verify clean shutdowns with a UPS HAT |
 | `start-youtube-music` | YouTube Music in Chromium kiosk mode |

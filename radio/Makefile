@@ -2,7 +2,6 @@
 #
 #   make              sendkey + lpoti/mpoti/rpoti (wiringPi)
 #   make PIGPIO=1     same, but the knob daemons use pigpio (run as root)
-#   make mpdevent     optional song monitor (libmpd)
 #   make install      copy binaries and scripts to RADIO_DIR
 #   make install-py   only potid.py and the scripts (no wiringPi needed)
 
@@ -19,7 +18,7 @@ GPIO_LIBS = -lwiringPi
 endif
 
 POTIS   = lpoti mpoti rpoti
-SCRIPTS = lpush mpush rpush startpoti.sh potid.py
+SCRIPTS = lpush mpush rpush startpoti.sh potid.py ky040_test.py
 
 all: sendkey $(POTIS)
 
@@ -33,9 +32,6 @@ mpoti: poti.c
 rpoti: poti.c
 	$(CC) $(CFLAGS) $(GPIO_DEF) -DPOTI_R -DRADIO_DIR='"$(RADIO_DIR)"' -o $@ $< $(GPIO_LIBS) -lpthread -lX11 -lXtst
 
-mpdevent: mpdevent.c
-	$(CC) $(CFLAGS) -o $@ $< -I/usr/include/libmpd-1.0/libmpd -lmpd
-
 # potid.py and the scripts only (no C daemons, no wiringPi needed)
 install-py:
 	install -d $(DESTDIR)$(RADIO_DIR)
@@ -48,6 +44,6 @@ install: all
 	install -m 644 potid.service $(DESTDIR)$(RADIO_DIR)/
 
 clean:
-	rm -f sendkey $(POTIS) mpdevent
+	rm -f sendkey $(POTIS)
 
 .PHONY: all install install-py clean
