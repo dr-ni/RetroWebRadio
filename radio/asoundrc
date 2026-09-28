@@ -1,23 +1,14 @@
-pcm.!default {
-    type hw
-    card 0
-}
-
-ctl.!default {
-    type hw
-    card 0
-}
+# ~/.asoundrc of the radio user: ALSA 10-band equalizer in front of PipeWire
+# (needs libasound2-plugin-equal and pipewire-alsa). Adjust with
+#   alsamixer -D equal
+# mpd plays to "plug:plugequal" (see mpd.conf); PipeWire sends it to the
+# default sink (e.g. the HiFiBerry DAC+, set with wpctl set-default).
 
 ctl.equal {
-    type equal;
+    type equal
 }
 
 pcm.plugequal {
-    type equal;
-    slave.pcm "plug:dmix";
-}
-
-pcm.!default {
-    type plug;
-    slave.pcm plugequal;
+    type equal
+    slave.pcm "plug:pipewire"
 }

@@ -2,7 +2,8 @@
 #
 #   make install        potid.py, scripts and templates to RADIO_DIR
 #   make autostart      knobs as systemd user service, radio GUI at login,
-#                       mpd user service (if ~/.config/mpd/mpd.conf exists)
+#                       mpd user service (mpd.conf and asoundrc installed to
+#                       ~/.config/mpd and ~ unless they exist)
 #   make no-autostart   undo "make autostart"
 #
 # Run as the radio user, without sudo. The top-level "make install-pi"
@@ -26,9 +27,13 @@ autostart: install
 	sed 's|@RADIO_DIR@|$(RADIO_DIR)|g' potid.service.in > $(UNIT_DIR)/potid.service
 	sed -e 's|@RADIO_DIR@|$(RADIO_DIR)|g' -e 's|@GUI_ARGS@|$(GUI_ARGS)|g' \
 	    retrowebradio-autostart.desktop.in > $(XDG_AUTO)/retrowebradio.desktop
+	@# mpd user service with equalizer; existing configs are kept
+	install -d $(HOME)/.config/mpd $(HOME)/.local/share/mpd/playlists
+	@[ -f $(HOME)/.config/mpd/mpd.conf ] || install -m 644 mpd.conf $(HOME)/.config/mpd/mpd.conf
+	@[ -f $(HOME)/.asoundrc ] || install -m 644 asoundrc $(HOME)/.asoundrc
 	systemctl --user daemon-reload
 	systemctl --user enable --now potid
-	@if [ -f $(HOME)/.config/mpd/mpd.conf ]; then systemctl --user enable --now mpd; fi
+	-systemctl --user enable --now mpd
 	-loginctl enable-linger $(USER)
 	@echo "autostart: knobs running (systemctl --user status potid), radio starts at next login"
 
