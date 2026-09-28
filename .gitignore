@@ -2,3 +2,4 @@ roehre
 *.o
 stations.xml
 stations.xml.tmp
+__pycache__/
